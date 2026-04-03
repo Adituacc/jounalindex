@@ -1,13 +1,14 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, RadialLinearScale, Filler, Tooltip } from 'chart.js';
-import { Line, Bar, Scatter, Radar } from 'react-chartjs-2';
+import { useState, useMemo, useCallback } from 'react';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, RadialLinearScale, ArcElement, Filler, Tooltip } from 'chart.js';
+import { Line, Bar, Scatter, Radar, Doughnut } from 'react-chartjs-2';
 import { useTrades } from '../context/TradeContext';
 import { formatMoney, formatMoneyFull } from '../utils/formatters';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, RadialLinearScale, Filler, Tooltip);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, RadialLinearScale, ArcElement, Filler, Tooltip);
 
 export default function Dashboard() {
   const { trades, activeSource, activeTimeFilter, calendarDate, settings, setActiveSource, setActiveTimeFilter, setCalendarDate, getFilteredTrades } = useTrades();
+  const [symbolSort, setSymbolSort] = useState('pnl');
 
   const fTrades = useMemo(() => getFilteredTrades(), [getFilteredTrades]);
 
@@ -22,6 +23,29 @@ export default function Dashboard() {
     const aw = w === 0 ? 0 : gp / w, al = l === 0 ? 0 : gl / l;
     const ar = al === 0 ? aw : aw / al;
 
+    // Streaks
+    let curStreak = 0, curStreakType = null, maxWinStreak = 0, maxLossStreak = 0, tempWin = 0, tempLoss = 0;
+    sorted.forEach(t => {
+      if (t.pnl > 0) {
+        tempWin++; tempLoss = 0;
+        if (tempWin > maxWinStreak) maxWinStreak = tempWin;
+      } else if (t.pnl < 0) {
+        tempLoss++; tempWin = 0;
+        if (tempLoss > maxLossStreak) maxLossStreak = tempLoss;
+      } else { tempWin = 0; tempLoss = 0; }
+    });
+    // Current streak from the end
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      const p = sorted[i].pnl;
+      if (curStreakType === null) { curStreakType = p >= 0 ? 'win' : 'loss'; curStreak = 1; }
+      else if ((curStreakType === 'win' && p >= 0) || (curStreakType === 'loss' && p < 0)) curStreak++;
+      else break;
+    }
+
+    // Best / worst trade
+    const bestTrade = sorted.reduce((best, t) => t.pnl > best.pnl ? t : best, sorted[0]);
+    const worstTrade = sorted.reduce((worst, t) => t.pnl < worst.pnl ? t : worst, sorted[0]);
+
     const filteredDMap = {};
     sorted.forEach(t => { if (!filteredDMap[t.date]) filteredDMap[t.date] = { pnl: 0 }; filteredDMap[t.date].pnl += t.pnl; });
     const gd = Object.values(filteredDMap).filter(d => d.pnl > 0).length;
@@ -29,20 +53,67 @@ export default function Dashboard() {
     const bd = Object.values(filteredDMap).filter(d => d.pnl === 0).length;
     const totD = Object.keys(filteredDMap).length;
     const dwr = totD === 0 ? 0 : (gd / totD) * 100;
-    const adixScore = Math.round((wr * 0.2) + (Math.min(pf, 3) / 3 * 20) + (Math.min(ar, 3) / 3 * 20) + (dwr * 0.2) + 20);
 
     // Chart data
     const sd = Object.keys(filteredDMap).sort();
     const labels = sd.map(d => { const [y, m, day] = d.split('-'); return `${m}/${day}/${y.slice(2)}`; });
-    let cp = 0, pk = 0;
+    let cp = 0, pk = 0, maxDD = 0;
     const cumData = [], dailyData = [], ddData = [];
-    sd.forEach(day => { const dp = filteredDMap[day].pnl; dailyData.push(dp); cp += dp; cumData.push(cp); if (cp > pk) pk = cp; ddData.push(cp - pk); });
+    sd.forEach(day => { const dp = filteredDMap[day].pnl; dailyData.push(dp); cp += dp; cumData.push(cp); if (cp > pk) pk = cp; const dd = cp - pk; ddData.push(dd); if (dd < maxDD) maxDD = dd; });
     const accData = [settings.startBalance, ...cumData.map(c => settings.startBalance + c)];
     const accLabels = ['Start', ...labels];
     const timePts = sorted.map(t => { const [h, m] = (t.time || '12:00').split(':'); return { x: parseInt(h) + parseInt(m) / 60, y: t.pnl }; });
 
-    return { tp, wr, pf, dwr, ar, aw, al, w, l, gd, rd, bd, adixScore, labels, cumData, dailyData, ddData, accData, accLabels, timePts, sorted,
-      radarData: [wr, Math.min(pf / 3, 1) * 100, Math.min(ar / 3, 1) * 100, 50, 50, dwr] };
+    // Recovery factor = total P&L / max drawdown (absolute)
+    const recoveryFactor = maxDD === 0 ? (tp > 0 ? 3 : 0) : Math.abs(tp / maxDD);
+    // Max drawdown as % of peak equity
+    const maxDDPct = pk === 0 ? 0 : Math.abs(maxDD / (settings.startBalance + pk)) * 100;
+    // Consistency = % of profitable days that contributed to total profit (evenness)
+    const consistency = dwr;
+
+    const adixScore = Math.round(
+      (wr * 0.15) +
+      (Math.min(pf, 3) / 3 * 20) +
+      (Math.min(ar, 3) / 3 * 20) +
+      (Math.min(recoveryFactor, 3) / 3 * 15) +
+      (Math.max(0, 100 - maxDDPct) * 0.1) +
+      (dwr * 0.2)
+    );
+
+    // Symbol performance
+    const symbolMap = {};
+    sorted.forEach(t => {
+      const sym = (t.symbol || 'Unknown').toUpperCase();
+      if (!symbolMap[sym]) symbolMap[sym] = { symbol: sym, pnl: 0, count: 0, wins: 0 };
+      symbolMap[sym].pnl += t.pnl;
+      symbolMap[sym].count++;
+      if (t.pnl > 0) symbolMap[sym].wins++;
+    });
+    const symbols = Object.values(symbolMap);
+
+    // Side distribution
+    let longCount = 0, shortCount = 0, longPnl = 0, shortPnl = 0;
+    sorted.forEach(t => {
+      if (t.side === 'long' || t.side === 'buy') { longCount++; longPnl += t.pnl; }
+      else { shortCount++; shortPnl += t.pnl; }
+    });
+
+    return {
+      tp, wr, pf, dwr, ar, aw, al, w, l, gd, rd, bd, adixScore: Math.min(100, Math.max(0, adixScore)),
+      labels, cumData, dailyData, ddData, accData, accLabels, timePts, sorted,
+      maxDD, maxDDPct, recoveryFactor,
+      curStreak, curStreakType, maxWinStreak, maxLossStreak,
+      bestTrade, worstTrade,
+      symbols, longCount, shortCount, longPnl, shortPnl,
+      radarData: [
+        wr,
+        Math.min(pf / 3, 1) * 100,
+        Math.min(ar / 3, 1) * 100,
+        Math.min(recoveryFactor / 3, 1) * 100,
+        Math.max(0, 100 - maxDDPct),
+        dwr,
+      ],
+    };
   }, [fTrades, settings.startBalance]);
 
   // ---- Calendar data ----
@@ -147,9 +218,31 @@ export default function Dashboard() {
   }, [stats]);
 
   const radarChartData = useMemo(() => ({
-    labels: ['Win %', 'Profit factor', 'Avg win/loss', 'Recovery factor', 'Max drawdown', 'Consistency'],
+    labels: ['Win %', 'Profit factor', 'Avg win/loss', 'Recovery factor', 'Drawdown resist.', 'Consistency'],
     datasets: [{ data: stats?.radarData || [0, 0, 0, 0, 0, 0], backgroundColor: 'rgba(124,92,252,0.2)', borderColor: '#7c5cfc', borderWidth: 2, pointBackgroundColor: '#7c5cfc', pointRadius: 3 }],
   }), [stats]);
+
+  const sideChartData = useMemo(() => {
+    if (!stats) return { labels: [], datasets: [{ data: [] }] };
+    return {
+      labels: ['Long', 'Short'],
+      datasets: [{
+        data: [stats.longCount, stats.shortCount],
+        backgroundColor: ['#22c55e', '#ef4444'],
+        borderWidth: 0,
+        cutout: '70%',
+      }],
+    };
+  }, [stats]);
+
+  const sortedSymbols = useMemo(() => {
+    if (!stats?.symbols) return [];
+    return [...stats.symbols].sort((a, b) => {
+      if (symbolSort === 'pnl') return b.pnl - a.pnl;
+      if (symbolSort === 'trades') return b.count - a.count;
+      return (b.wins / b.count) - (a.wins / a.count);
+    });
+  }, [stats, symbolSort]);
 
   const lineOpts = (yRight = false, fmt = true) => ({
     responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
@@ -216,12 +309,17 @@ export default function Dashboard() {
       <div className="p-6 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          <div className="card p-5 hover:border-dark-500 transition-colors">
-            <div className="flex items-center gap-2 mb-2"><span className="text-neutral text-xs">Net P&L</span></div>
+          <div className="card p-5 hover:border-dark-500 transition-colors animate-fade-in-up">
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-dollar-sign text-xs text-accent" /><span className="text-neutral text-xs">Net P&L</span></div>
             <span className={`text-3xl font-bold ${!s ? '' : s.tp < 0 ? 'text-loss' : s.tp > 0 ? 'text-profit' : ''}`}>{s ? formatMoneyFull(s.tp) : '$0.00'}</span>
+            {s && <div className="flex items-center gap-2 mt-2 text-xs text-neutral">
+              <span>{fTrades.length} trades</span>
+              <span className="w-1 h-1 bg-dark-400 rounded-full" />
+              <span>{s.curStreak} {s.curStreakType} streak</span>
+            </div>}
           </div>
-          <div className="card p-5 hover:border-dark-500 transition-colors">
-            <div className="flex items-center gap-2 mb-2"><span className="text-neutral text-xs">Trade win %</span></div>
+          <div className="card p-5 hover:border-dark-500 transition-colors animate-fade-in-up" style={{ animationDelay: '50ms' }}>
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-bullseye text-xs text-profit" /><span className="text-neutral text-xs">Trade win %</span></div>
             <div className="flex items-center gap-4">
               <span className="text-3xl font-bold">{s ? s.wr.toFixed(2) + '%' : '0.00%'}</span>
               <div className="gauge-container">
@@ -236,8 +334,8 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="card p-5 hover:border-dark-500 transition-colors">
-            <div className="flex items-center gap-2 mb-2"><span className="text-neutral text-xs">Profit factor</span></div>
+          <div className="card p-5 hover:border-dark-500 transition-colors animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-scale-balanced text-xs text-yellow-400" /><span className="text-neutral text-xs">Profit factor</span></div>
             <div className="flex items-center gap-4">
               <span className="text-3xl font-bold">{s ? s.pf.toFixed(2) : '0.00'}</span>
               <div className="gauge-container">
@@ -248,8 +346,8 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="card p-5 hover:border-dark-500 transition-colors">
-            <div className="flex items-center gap-2 mb-2"><span className="text-neutral text-xs">Day win %</span></div>
+          <div className="card p-5 hover:border-dark-500 transition-colors animate-fade-in-up" style={{ animationDelay: '150ms' }}>
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-calendar-check text-xs text-blue-400" /><span className="text-neutral text-xs">Day win %</span></div>
             <div className="flex items-center gap-4">
               <span className="text-3xl font-bold">{s ? s.dwr.toFixed(0) + '%' : '0%'}</span>
               <div className="gauge-container">
@@ -263,8 +361,8 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <div className="card p-5 hover:border-dark-500 transition-colors">
-            <div className="flex items-center gap-2 mb-2"><span className="text-neutral text-xs">Avg win/loss trade</span></div>
+          <div className="card p-5 hover:border-dark-500 transition-colors animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-chart-bar text-xs text-orange-400" /><span className="text-neutral text-xs">Avg win/loss trade</span></div>
             <div className="flex items-center gap-3">
               <span className="text-3xl font-bold">{s ? s.ar.toFixed(2) : '0.00'}</span>
               <div className="flex-1">
@@ -280,6 +378,58 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Quick stats row */}
+        {s && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="card p-4 hover:border-dark-500 transition-colors group">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-profit/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <i className="fa-solid fa-fire text-profit" />
+                </div>
+                <div>
+                  <div className="text-xs text-neutral">Max win streak</div>
+                  <div className="text-xl font-bold text-profit">{s.maxWinStreak}</div>
+                </div>
+              </div>
+            </div>
+            <div className="card p-4 hover:border-dark-500 transition-colors group">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-loss/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <i className="fa-solid fa-arrow-trend-down text-loss" />
+                </div>
+                <div>
+                  <div className="text-xs text-neutral">Max loss streak</div>
+                  <div className="text-xl font-bold text-loss">{s.maxLossStreak}</div>
+                </div>
+              </div>
+            </div>
+            <div className="card p-4 hover:border-dark-500 transition-colors group">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-profit/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <i className="fa-solid fa-trophy text-yellow-400" />
+                </div>
+                <div>
+                  <div className="text-xs text-neutral">Best trade</div>
+                  <div className="text-lg font-bold text-profit">{formatMoney(s.bestTrade.pnl)}</div>
+                  <div className="text-[10px] text-neutral uppercase">{s.bestTrade.symbol}</div>
+                </div>
+              </div>
+            </div>
+            <div className="card p-4 hover:border-dark-500 transition-colors group">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-loss/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <i className="fa-solid fa-skull-crossbones text-loss" />
+                </div>
+                <div>
+                  <div className="text-xs text-neutral">Worst trade</div>
+                  <div className="text-lg font-bold text-loss">{formatMoney(s.worstTrade.pnl)}</div>
+                  <div className="text-[10px] text-neutral uppercase">{s.worstTrade.symbol}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Row 2: Radar, Heatmap, Cumulative P&L */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -332,8 +482,14 @@ export default function Dashboard() {
             </div>
             <div className="border-t border-dark-600 pt-4">
               <div className="flex items-center justify-between">
-                <div><span className="text-sm text-neutral">Today's score</span><br /><span className="text-2xl font-bold">0/5</span></div>
-                <button className="px-4 py-2 bg-dark-600 hover:bg-dark-500 rounded-lg text-sm font-medium">Daily checklist</button>
+                <div>
+                  <span className="text-sm text-neutral">Max drawdown</span><br />
+                  <span className="text-2xl font-bold text-loss">{s ? formatMoney(s.maxDD) : '$0'}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm text-neutral">Recovery factor</span><br />
+                  <span className="text-2xl font-bold">{s ? s.recoveryFactor.toFixed(2) : '0.00'}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -473,6 +629,92 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Row 5: Symbol Performance + Side Distribution */}
+        {s && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <span className="font-medium">Symbol performance</span>
+                <div className="flex bg-dark-700 rounded-lg p-0.5">
+                  {[{ key: 'pnl', label: 'P&L' }, { key: 'trades', label: 'Trades' }, { key: 'winrate', label: 'Win %' }].map(opt => (
+                    <button key={opt.key} onClick={() => setSymbolSort(opt.key)}
+                      className={`px-2.5 py-1 text-xs font-medium rounded ${symbolSort === opt.key ? 'bg-dark-600 text-white' : 'text-neutral hover:text-white'}`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {sortedSymbols.map((sym, i) => {
+                  const wr = sym.count > 0 ? (sym.wins / sym.count * 100) : 0;
+                  const maxPnl = Math.max(...sortedSymbols.map(s => Math.abs(s.pnl)), 1);
+                  const barWidth = Math.abs(sym.pnl) / maxPnl * 100;
+                  return (
+                    <div key={sym.symbol} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-dark-700 transition-colors group">
+                      <span className="text-sm font-bold w-6 text-neutral">{i + 1}</span>
+                      <span className="text-sm font-semibold uppercase w-24">{sym.symbol}</span>
+                      <div className="flex-1 relative h-6">
+                        <div className={`absolute top-0 h-full rounded ${sym.pnl >= 0 ? 'bg-profit/20' : 'bg-loss/20'}`}
+                          style={{ width: `${barWidth}%`, transition: 'width 0.5s ease' }} />
+                        <div className="absolute inset-0 flex items-center px-2">
+                          <span className={`text-xs font-medium ${sym.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(sym.pnl)}</span>
+                        </div>
+                      </div>
+                      <span className="text-xs text-neutral w-16 text-right">{sym.count} trade{sym.count !== 1 ? 's' : ''}</span>
+                      <span className={`text-xs font-medium w-14 text-right ${wr >= 50 ? 'text-profit' : 'text-loss'}`}>{wr.toFixed(0)}% W</span>
+                    </div>
+                  );
+                })}
+                {sortedSymbols.length === 0 && <div className="text-center text-neutral py-8 text-sm">No symbol data</div>}
+              </div>
+            </div>
+
+            <div className="card p-5">
+              <div className="flex items-center gap-2 mb-4"><span className="font-medium">Side distribution</span></div>
+              <div className="flex justify-center mb-4">
+                <div className="relative w-[160px] h-[160px]">
+                  <Doughnut data={sideChartData} options={{ responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, cutout: '70%' }} />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-2xl font-bold">{fTrades.length}</span>
+                    <span className="text-xs text-neutral">Total</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-dark-700 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-profit" />
+                    <span className="text-sm">Long</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold">{s.longCount}</span>
+                    <span className={`text-xs ml-2 ${s.longPnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(s.longPnl)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-dark-700 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-loss" />
+                    <span className="text-sm">Short</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold">{s.shortCount}</span>
+                    <span className={`text-xs ml-2 ${s.shortPnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoney(s.shortPnl)}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t border-dark-600 mt-4 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-neutral">Long bias</span>
+                  <span className="text-xs font-medium">{((s.longCount / (s.longCount + s.shortCount || 1)) * 100).toFixed(0)}%</span>
+                </div>
+                <div className="h-2 bg-dark-600 rounded-full overflow-hidden">
+                  <div className="h-full bg-profit rounded-full transition-all" style={{ width: `${(s.longCount / (s.longCount + s.shortCount || 1)) * 100}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

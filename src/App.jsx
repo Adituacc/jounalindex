@@ -8,6 +8,8 @@ import Journal from './components/Journal';
 import AddTradeModal from './components/AddTradeModal';
 import HLSyncModal from './components/HLSyncModal';
 import LTSyncModal from './components/LTSyncModal';
+import LifeTrackerApp from './components/LifeTracker/LifeTrackerApp';
+import './components/LifeTracker/LifeTracker.css';
 
 export default function App({ onReady }) {
   const [activeView, setActiveView] = useState('dashboard');
@@ -36,6 +38,7 @@ export default function App({ onReady }) {
     if (!anyModalOpen && !e.ctrlKey && !e.metaKey) {
       if (e.key === '1') setActiveView('dashboard');
       if (e.key === '2') setActiveView('journal');
+      if (e.key === '3') setActiveView('lifetracker');
     }
   }, [addTradeOpen, hlSyncOpen, ltSyncOpen, anyModalOpen]);
 
@@ -62,6 +65,7 @@ export default function App({ onReady }) {
               <div key={activeView} className="animate-fade-in">
                 {activeView === 'dashboard' && <Dashboard />}
                 {activeView === 'journal' && <Journal />}
+                {activeView === 'lifetracker' && <ErrorBoundary><LifeTrackerApp /></ErrorBoundary>}
               </div>
             </main>
 

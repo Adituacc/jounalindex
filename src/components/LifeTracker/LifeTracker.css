@@ -1,0 +1,150 @@
+/* ─── Life Tracker scoped styles ─── */
+
+.lt-scope {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  isolation: isolate;
+  color: #0f172a;
+}
+
+.lt-scope ::selection {
+  background: rgba(14, 165, 233, 0.18);
+}
+
+/* Light-mode scrollbars (override adixTRADE dark scrollbars) */
+.lt-scope ::-webkit-scrollbar { width: 6px; height: 6px; }
+.lt-scope ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+.lt-scope ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+.lt-scope ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Dark-mode scrollbars */
+.lt-dark ::-webkit-scrollbar-track { background: #1e293b; }
+.lt-dark ::-webkit-scrollbar-thumb { background: #475569; }
+.lt-dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+/* ─── Dark mode overrides (scoped via .lt-dark) ─── */
+.lt-dark {
+  color-scheme: dark;
+}
+
+/* Surface backgrounds */
+.lt-dark .bg-white { background-color: #1e293b; }
+.lt-dark .bg-white\/75 { background-color: rgba(30, 41, 59, 0.75); }
+.lt-dark .bg-white\/85 { background-color: rgba(30, 41, 59, 0.85); }
+.lt-dark .bg-white\/90 { background-color: rgba(30, 41, 59, 0.9); }
+.lt-dark .bg-white\/20 { background-color: rgba(30, 41, 59, 0.2); }
+.lt-dark .bg-white\/80 { background-color: rgba(30, 41, 59, 0.8); }
+.lt-dark .bg-slate-50 { background-color: #0f172a; }
+.lt-dark .bg-slate-50\/80 { background-color: rgba(15, 23, 42, 0.8); }
+.lt-dark .bg-slate-100 { background-color: #1e293b; }
+.lt-dark .bg-slate-100\/80 { background-color: rgba(30, 41, 59, 0.8); }
+.lt-dark .bg-slate-200 { background-color: #334155; }
+.lt-dark .bg-slate-800 { background-color: #0f172a; }
+
+/* Text colors */
+.lt-dark .text-slate-950 { color: #f8fafc; }
+.lt-dark .text-slate-900 { color: #f1f5f9; }
+.lt-dark .text-slate-800 { color: #cbd5e1; }
+.lt-dark .text-slate-700 { color: #94a3b8; }
+.lt-dark .text-slate-600 { color: #94a3b8; }
+.lt-dark .text-slate-500 { color: #94a3b8; }
+
+/* Borders */
+.lt-dark .border-white\/70 { border-color: rgba(51, 65, 85, 0.5); }
+.lt-dark .border-slate-200 { border-color: #334155; }
+.lt-dark .border-slate-200\/80 { border-color: rgba(51, 65, 85, 0.8); }
+.lt-dark .border-slate-100 { border-color: #1e293b; }
+.lt-dark .border-slate-300 { border-color: #475569; }
+
+/* Colored accent card backgrounds (darken) */
+.lt-dark .bg-emerald-50 { background-color: rgba(6, 78, 59, 0.3); }
+.lt-dark .bg-amber-50 { background-color: rgba(120, 53, 15, 0.3); }
+.lt-dark .bg-rose-50 { background-color: rgba(136, 19, 55, 0.3); }
+.lt-dark .bg-sky-50 { background-color: rgba(7, 89, 133, 0.3); }
+.lt-dark .bg-violet-50 { background-color: rgba(91, 33, 182, 0.3); }
+.lt-dark .bg-orange-50 { background-color: rgba(154, 52, 18, 0.3); }
+.lt-dark .bg-green-50 { background-color: rgba(20, 83, 45, 0.3); }
+.lt-dark .bg-amber-50\/80 { background-color: rgba(120, 53, 15, 0.25); }
+
+/* Badge/tag backgrounds */
+.lt-dark .bg-sky-100 { background-color: rgba(7, 89, 133, 0.3); }
+.lt-dark .bg-rose-100 { background-color: rgba(136, 19, 55, 0.3); }
+.lt-dark .bg-amber-100 { background-color: rgba(120, 53, 15, 0.3); }
+.lt-dark .bg-emerald-100 { background-color: rgba(6, 78, 59, 0.3); }
+.lt-dark .bg-violet-100 { background-color: rgba(91, 33, 182, 0.3); }
+.lt-dark .bg-amber-200 { background-color: rgba(120, 53, 15, 0.4); }
+
+/* Colored accent borders */
+.lt-dark .border-emerald-100 { border-color: rgba(6, 78, 59, 0.4); }
+.lt-dark .border-amber-100 { border-color: rgba(120, 53, 15, 0.4); }
+.lt-dark .border-rose-100 { border-color: rgba(136, 19, 55, 0.4); }
+.lt-dark .border-sky-100 { border-color: rgba(7, 89, 133, 0.4); }
+.lt-dark .border-sky-200 { border-color: rgba(56, 189, 248, 0.3); }
+.lt-dark .border-sky-300 { border-color: rgba(56, 189, 248, 0.4); }
+.lt-dark .border-violet-100 { border-color: rgba(91, 33, 182, 0.4); }
+.lt-dark .border-violet-200 { border-color: rgba(91, 33, 182, 0.4); }
+.lt-dark .border-orange-100 { border-color: rgba(154, 52, 18, 0.4); }
+.lt-dark .border-green-500 { border-color: #22c55e; }
+.lt-dark .border-amber-200\/80 { border-color: rgba(120, 53, 15, 0.4); }
+
+/* Ring overrides */
+.lt-dark .ring-emerald-100 { --tw-ring-color: rgba(6, 78, 59, 0.4); }
+.lt-dark .ring-amber-100 { --tw-ring-color: rgba(120, 53, 15, 0.4); }
+.lt-dark .ring-sky-100 { --tw-ring-color: rgba(7, 89, 133, 0.4); }
+.lt-dark .ring-violet-100 { --tw-ring-color: rgba(91, 33, 182, 0.4); }
+.lt-dark .ring-orange-100 { --tw-ring-color: rgba(154, 52, 18, 0.4); }
+
+/* Colored text on accent cards → lighter for readability */
+.lt-dark .text-emerald-950 { color: #a7f3d0; }
+.lt-dark .text-emerald-800 { color: #34d399; }
+.lt-dark .text-emerald-700 { color: #6ee7b7; }
+.lt-dark .text-amber-950 { color: #fde68a; }
+.lt-dark .text-amber-800 { color: #f59e0b; }
+.lt-dark .text-amber-700 { color: #fbbf24; }
+.lt-dark .text-amber-600 { color: #f59e0b; }
+.lt-dark .text-amber-500 { color: #f59e0b; }
+.lt-dark .text-rose-950 { color: #fda4af; }
+.lt-dark .text-rose-800 { color: #f43f5e; }
+.lt-dark .text-rose-700 { color: #fb7185; }
+.lt-dark .text-sky-950 { color: #7dd3fc; }
+.lt-dark .text-sky-800 { color: #0ea5e9; }
+.lt-dark .text-sky-700 { color: #38bdf8; }
+.lt-dark .text-violet-950 { color: #c4b5fd; }
+.lt-dark .text-violet-800 { color: #8b5cf6; }
+.lt-dark .text-violet-700 { color: #a78bfa; }
+.lt-dark .text-orange-950 { color: #fdba74; }
+.lt-dark .text-orange-800 { color: #f97316; }
+.lt-dark .text-orange-700 { color: #fb923c; }
+
+/* Shadows */
+.lt-dark .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.4); }
+
+/* Input/placeholder */
+.lt-dark input,
+.lt-dark textarea,
+.lt-dark select {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.lt-dark input::placeholder,
+.lt-dark textarea::placeholder {
+  color: #64748b;
+}
+
+/* Selection */
+.lt-dark ::selection {
+  background: rgba(56, 189, 248, 0.3);
+}
+
+/* Gradient cards that are already dark stay dark */
+.lt-dark .bg-slate-950 { background-color: #0f172a; }
+
+/* Reset inherited dark color for lt-dark wrapper itself */
+.lt-dark {
+  color: #e2e8f0;
+}

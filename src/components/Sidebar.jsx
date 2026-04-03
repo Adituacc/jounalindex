@@ -12,6 +12,7 @@ export default function Sidebar({ activeView, setActiveView, onOpenAddTrade, onO
   const navItems = [
     { id: 'dashboard', icon: 'fa-solid fa-border-all', label: 'Dashboard', shortcut: '1' },
     { id: 'journal', icon: 'fa-solid fa-book', label: 'Journal', shortcut: '2' },
+    { id: 'lifetracker', icon: 'fa-solid fa-heart-pulse', label: 'Life Tracker', shortcut: '3' },
   ];
 
   const handleCSVImport = async (e) => {

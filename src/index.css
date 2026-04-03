@@ -51,6 +51,15 @@ body {
 
 .tab-active { color: #7c5cfc; border-bottom: 2px solid #7c5cfc; }
 
+/* Dashboard card shimmer on hover */
+.card-shimmer { position: relative; overflow: hidden; }
+.card-shimmer::after {
+  content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(124,92,252,0.03), transparent);
+  transition: left 0.5s ease;
+}
+.card-shimmer:hover::after { left: 100%; }
+
 @keyframes hlPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(80,227,194,0.4); }
   50% { box-shadow: 0 0 0 8px rgba(80,227,194,0); }
@@ -252,3 +261,153 @@ body {
 /* Editor link styling */
 .j-note-editor a { color: #7c5cfc; text-decoration: underline; }
 .j-note-editor a:hover { color: #a78bfa; }
+
+/* ============ JOURNAL ENHANCEMENTS ============ */
+
+/* Note count badge in folder sidebar */
+.j-count-badge {
+  margin-left: auto; background: #1e1e2a; color: #71717a; border-radius: 10px;
+  padding: 1px 8px; font-size: 11px; font-weight: 600; min-width: 22px; text-align: center;
+  transition: all 0.15s;
+}
+.j-nav-item.j-active .j-count-badge { background: #7c5cfc20; color: #a78bfa; }
+.j-nav-item:hover .j-count-badge { background: #2b2b3d; color: #a1a1aa; }
+
+/* Note list item — enhanced with preview */
+.j-date-list li.j-note-item {
+  padding: 14px 18px; border-bottom: 1px solid #1a1a24; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 12px; transition: all 0.15s;
+}
+.j-date-list li.j-note-item:hover { background: rgba(124,92,252,0.03); }
+.j-date-list li.j-note-item.j-selected {
+  background: linear-gradient(90deg, rgba(124,92,252,0.08), transparent);
+  border-left: 3px solid #7c5cfc; padding-left: 15px;
+}
+
+/* Folder badge inside note list */
+.j-note-folder-badge {
+  display: inline-block; background: #1e1e2a; padding: 1px 7px; border-radius: 4px;
+  font-size: 10px; color: #a1a1aa; font-weight: 500; letter-spacing: 0.02em;
+}
+
+/* Mini tag pills in note list */
+.j-note-tag-mini {
+  background: #1e1e2a; color: #71717a; padding: 1px 6px; border-radius: 3px;
+  font-size: 9px; font-weight: 600;
+}
+
+/* Empty note list */
+.j-date-list li.j-empty-list {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 40px 20px; border: none; cursor: default;
+}
+.j-date-list li.j-empty-list:hover { background: transparent; padding-left: 40px; }
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Folder label in editor header */
+.j-folder-label {
+  background: linear-gradient(135deg, #7c5cfc20, #a78bfa15); color: #a78bfa;
+  padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Icon button */
+.j-icon-btn {
+  background: none; border: 1px solid transparent; cursor: pointer;
+  width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center;
+  justify-content: center; transition: all 0.15s;
+}
+.j-icon-btn:hover { background: rgba(255,255,255,0.05); border-color: #22222e; }
+.j-icon-btn.text-accent { color: #7c5cfc; }
+
+/* Danger toolbar button */
+.j-toolbar-btn.j-btn-danger { color: #71717a; }
+.j-toolbar-btn.j-btn-danger:hover { color: #ff4444; background: rgba(255,68,68,0.08); }
+
+/* Save indicator */
+.j-save-indicator {
+  display: inline-flex; align-items: center; font-size: 10px; color: #71717a;
+  transition: all 0.3s ease; opacity: 0;
+}
+.j-save-indicator.j-saving { opacity: 1; color: #f59e0b; }
+.j-save-indicator.j-saved { opacity: 1; color: #22c55e; animation: savedFade 2s ease forwards; }
+@keyframes savedFade { 0%,60% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Empty state */
+.j-empty-icon {
+  width: 80px; height: 80px; border-radius: 24px;
+  background: linear-gradient(135deg, #7c5cfc10, #a78bfa08);
+  border: 1px solid #22222e; display: flex; align-items: center; justify-content: center;
+}
+
+/* Ghost button */
+.j-ghost-btn {
+  display: inline-flex; align-items: center; padding: 10px 20px; border-radius: 12px;
+  background: linear-gradient(135deg, #7c5cfc, #6b4ce0); color: #fff; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  box-shadow: 0 4px 15px rgba(124,92,252,0.3);
+}
+.j-ghost-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,92,252,0.4); }
+
+/* Keyboard shortcut hints */
+.j-kbd {
+  display: inline-block; background: #1e1e2a; border: 1px solid #2b2b3d;
+  border-radius: 4px; padding: 1px 6px; font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 10px; color: #a1a1aa; margin-right: 4px;
+}
+
+/* Tag pill (updated for wrap) */
+.j-tag-pill {
+  display: inline-flex; align-items: center; background: #1e1e2a; padding: 5px 12px;
+  border-radius: 16px; font-size: 12px; color: #a1a1aa; cursor: pointer; border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.j-tag-pill:hover { border-color: #3f3f46; color: #fff; }
+.j-tag-pill.j-active { border-color: #7c5cfc; background: rgba(124,92,252,0.08); color: #a78bfa; }
+.j-tag-pill span { background: #2b2b3d; color: #71717a; border-radius: 10px; padding: 1px 6px; font-size: 10px; margin-left: 8px; font-weight: 600; }
+
+/* Smoother transitions for sidebars */
+.j-nav-sidebar, .j-mid-sidebar { transition: width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s, border-color 0.2s; }
+
+/* Editor tag pill (updated) */
+.j-editor-tag-pill {
+  background: linear-gradient(135deg, #1e1e2a, #22222e); padding: 4px 10px; border-radius: 15px;
+  font-size: 11px; color: #a1a1aa; display: flex; align-items: center; gap: 6px;
+  border: 1px solid #2b2b3d;
+}
+.j-editor-tag-pill i { cursor: pointer; color: #52525b; font-size: 9px; }
+.j-editor-tag-pill i:hover { color: #ff4444; }
+
+/* Toolbar refinements */
+.j-toolbar {
+  background: #0f0f17; padding: 6px 12px; border-radius: 10px 10px 0 0;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid #1a1a24;
+}
+.j-toolbar-btn {
+  background: none; border: 1px solid transparent; color: #a1a1aa; cursor: pointer;
+  font-size: 13px; padding: 5px 7px; border-radius: 6px; display: flex; align-items: center; gap: 5px;
+  transition: all 0.15s;
+}
+.j-toolbar-btn:hover { background: #1e1e2a; color: #fff; transform: translateY(-1px); }
+
+/* Editor box refinement */
+.j-editor-box {
+  background: #0a0a0f; border-radius: 10px; display: flex; flex-direction: column;
+  flex: 1; border: 1px solid #1a1a24; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+/* Note editor refinements */
+.j-note-editor {
+  flex: 1; background: transparent; color: #e2e8f0; border: none; padding: 28px 32px;
+  font-size: 15px; line-height: 1.7; outline: none; overflow-y: auto; min-height: 400px;
+}
+.j-note-editor[contenteditable]:empty::before {
+  content: "Start writing... (# for headings, - for lists, [] for checklists)";
+  color: #3f3f46; pointer-events: none; display: block; font-style: italic;
+}
