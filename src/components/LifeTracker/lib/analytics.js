@@ -80,6 +80,9 @@ export function loadFocusData() {
     selectedTaskId: data.selectedTaskId ?? null,
     intention: data.intention ?? '',
     sessions: Array.isArray(data.sessions) ? data.sessions : [],
+    running: Boolean(data.running && data.endsAt),
+    endsAt: Number.isFinite(Number(data.endsAt)) ? Number(data.endsAt) : null,
+    remainingSeconds: Number.isFinite(Number(data.remainingSeconds)) ? Number(data.remainingSeconds) : null,
   }
 }
 

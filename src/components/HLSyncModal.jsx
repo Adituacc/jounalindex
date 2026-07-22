@@ -5,7 +5,7 @@ import { fetchHL, processHL } from '../utils/hlSync';
 import { formatMoneyFull, dedupeKey } from '../utils/formatters';
 
 export default function HLSyncModal({ open, onClose }) {
-  const { trades, addTrades, replaceTrades, saveHlAddr, hlSavedAddr } = useTrades();
+  const { trades, addTrades, replaceTrades, saveHlAddr, hlSavedAddr, upsertSyncAccount, recordImport } = useTrades();
   const showToast = useToast();
   const [addr, setAddr] = useState(hlSavedAddr);
   const [startDate, setStartDate] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().split('T')[0]; });
@@ -16,6 +16,7 @@ export default function HLSyncModal({ open, onClose }) {
   const [progressMsg, setProgressMsg] = useState('');
   const [progressPct, setProgressPct] = useState(0);
   const [results, setResults] = useState(null);
+  const [preview, setPreview] = useState(null);
   const lastSynced = useRef([]);
 
   const onProgress = (msg, pct) => { setProgressMsg(msg); setProgressPct(pct); };
@@ -40,31 +41,42 @@ export default function HLSyncModal({ open, onClose }) {
     const st = new Date(startDate).getTime(), et = new Date(endDate).getTime() + 86400000;
     if (isNaN(st) || isNaN(et)) { showToast('Select valid dates', 'error'); return; }
 
-    setStatus('progress'); onProgress('Connecting...', 5);
+    setPreview(null); setResults(null); setStatus('progress'); onProgress('Connecting...', 5);
+    const accountId = `hyperliquid_${a}`;
+    upsertSyncAccount({ id: accountId, source: 'hyperliquid', label: 'Hyperliquid', address: a, status: 'syncing' });
     try {
       const fills = await fetchHL(a, st, et, perpOnly, onProgress);
       onProgress(`Processing ${fills.length} fills...`, 85);
-      const nt = processHL(fills);
-      lastSynced.current = nt;
-      onProgress('Importing...', 95);
-
-      if (clearBefore) {
-        replaceTrades(nt);
-      } else {
-        const existing = new Set(trades.map(dedupeKey));
-        addTrades(nt.filter(t => !existing.has(dedupeKey(t))));
-      }
-
+      const nt = processHL(fills).map(trade => ({ ...trade, accountId }));
+      onProgress('Preparing import preview...', 95);
+      const existing = new Set(trades.map(dedupeKey));
+      const fresh = clearBefore ? nt : nt.filter(trade => !existing.has(dedupeKey(trade)));
+      const duplicates = clearBefore ? 0 : nt.length - fresh.length;
       const tp = nt.reduce((s, t) => s + t.pnl, 0);
       const uc = new Set(nt.map(t => t.symbol));
-      setResults({ total: nt.length, pnl: tp, coins: uc.size, fillCount: fills.length });
-      setStatus('done');
-      showToast(`Synced ${nt.length} trades`, 'success');
+      setPreview({ allTrades: nt, fresh, duplicates, pnl: tp, coins: uc.size, fillCount: fills.length, accountId, account: a });
+      setStatus('preview');
     } catch (err) {
       console.error(err);
       setStatus('idle');
+      recordImport({ source: 'hyperliquid', accountId, account: a, status: 'error', message: err.message, startDate, endDate });
       showToast(`Sync failed: ${err.message}`, 'error');
     }
+  };
+
+  const commitImport = () => {
+    if (!preview) return;
+    if (clearBefore) {
+      const kept = trades.filter(trade => trade.source !== 'hyperliquid' || (trade.accountId && trade.accountId !== preview.accountId));
+      replaceTrades([...kept, ...preview.allTrades]);
+    } else {
+      addTrades(preview.fresh);
+    }
+    lastSynced.current = preview.allTrades;
+    setResults({ total: preview.allTrades.length, imported: preview.fresh.length, pnl: preview.pnl, coins: preview.coins, fillCount: preview.fillCount });
+    setStatus('done');
+    recordImport({ source: 'hyperliquid', accountId: preview.accountId, account: preview.account, added: preview.fresh.length, fills: preview.fillCount, duplicates: preview.duplicates, tradeIds: preview.fresh.map(trade => trade.id), startDate, endDate });
+    showToast(`Imported ${preview.fresh.length} Hyperliquid trades`, 'success');
   };
 
   const handleExportCSV = () => {
@@ -87,29 +99,29 @@ export default function HLSyncModal({ open, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-      <div className="bg-dark-800 border border-[#50e3c2]/20 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="hl-sync-title" className="bg-dark-800 border border-[#50e3c2]/20 rounded-xl w-[calc(100%-1.5rem)] max-w-lg max-h-[calc(100vh-1.5rem)] shadow-2xl overflow-y-auto animate-scale-in" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-[#0e1f2a] to-[#0a2e26] px-6 py-4 border-b border-[#50e3c2]/20 flex justify-between items-center">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
+          <h2 id="hl-sync-title" className="text-lg font-semibold flex items-center gap-2">
             <svg className="w-5 h-5 text-hl" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9" /></svg>
             Hyperliquid Sync
           </h2>
-          <button onClick={onClose} className="text-neutral hover:text-white transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10"><i className="fa-solid fa-xmark" /></button>
+          <button type="button" onClick={onClose} aria-label="Close Hyperliquid sync" className="text-neutral hover:text-white transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10"><i className="fa-solid fa-xmark" /></button>
         </div>
         <div className="p-6 space-y-5">
           <div>
-            <label className="block text-xs font-medium text-neutral mb-1.5 uppercase tracking-wider">Wallet Address</label>
-            <input type="text" value={addr} onChange={e => setAddr(e.target.value)} placeholder="0x..." spellCheck="false"
+            <label htmlFor="hl-wallet" className="block text-xs font-medium text-neutral mb-1.5 uppercase tracking-wider">Wallet Address</label>
+            <input id="hl-wallet" type="text" value={addr} onChange={e => setAddr(e.target.value)} placeholder="0x..." spellCheck="false"
               className="w-full bg-dark-900 border border-dark-600 rounded-lg p-3 text-sm text-white focus:border-hl outline-none font-mono placeholder:text-dark-400" />
             <p className="text-[11px] text-neutral mt-1.5">Public wallet address — read-only, no private key needed</p>
           </div>
           <div className="flex gap-4">
             <div className="flex-1">
-              <label className="block text-xs font-medium text-neutral mb-1.5 uppercase tracking-wider">From Date</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-dark-900 border border-dark-600 rounded-lg p-3 text-sm text-white focus:border-hl outline-none" />
+              <label htmlFor="hl-from-date" className="block text-xs font-medium text-neutral mb-1.5 uppercase tracking-wider">From Date</label>
+              <input id="hl-from-date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-dark-900 border border-dark-600 rounded-lg p-3 text-sm text-white focus:border-hl outline-none" />
             </div>
             <div className="flex-1">
-              <label className="block text-xs font-medium text-neutral mb-1.5 uppercase tracking-wider">To Date</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-dark-900 border border-dark-600 rounded-lg p-3 text-sm text-white focus:border-hl outline-none" />
+              <label htmlFor="hl-to-date" className="block text-xs font-medium text-neutral mb-1.5 uppercase tracking-wider">To Date</label>
+              <input id="hl-to-date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-dark-900 border border-dark-600 rounded-lg p-3 text-sm text-white focus:border-hl outline-none" />
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -124,7 +136,7 @@ export default function HLSyncModal({ open, onClose }) {
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={clearBefore} onChange={e => setClearBefore(e.target.checked)} className="w-4 h-4 accent-[#50e3c2]" />
-              <span className="text-sm text-neutral">Replace existing</span>
+              <span className="text-sm text-neutral">Replace this wallet's Hyperliquid trades</span>
             </label>
           </div>
 
@@ -137,6 +149,14 @@ export default function HLSyncModal({ open, onClose }) {
               <div className="h-1.5 bg-dark-600 rounded-full overflow-hidden">
                 <div className="h-full bg-hl rounded-full transition-all duration-300" style={{ width: `${progressPct}%` }} />
               </div>
+            </div>
+          )}
+
+          {status === 'preview' && preview && (
+            <div className="rounded-lg border border-hl/25 bg-hl/5 p-4">
+              <div className="flex items-center justify-between"><span className="text-sm font-medium text-hl">Review before import</span><span className="text-xs text-neutral">No data has changed yet</span></div>
+              <div className="mt-3 grid grid-cols-3 gap-3 text-center"><div><div className="text-lg font-bold">{preview.fresh.length}</div><div className="text-[10px] uppercase text-neutral">New trades</div></div><div><div className="text-lg font-bold">{preview.duplicates}</div><div className="text-[10px] uppercase text-neutral">Duplicates</div></div><div><div className="text-lg font-bold">{preview.fillCount}</div><div className="text-[10px] uppercase text-neutral">Fills</div></div></div>
+              <div className="mt-3 max-h-36 space-y-1 overflow-y-auto border-t border-hl/15 pt-3">{preview.allTrades.slice(0, 8).map(trade => <div key={trade.id} className="flex justify-between text-xs"><span>{trade.date} · {trade.symbol} · {trade.side}</span><span className={trade.pnl >= 0 ? 'text-profit' : 'text-loss'}>{formatMoneyFull(trade.pnl)}</span></div>)}{preview.allTrades.length > 8 && <p className="text-[11px] text-neutral">+{preview.allTrades.length - 8} more trades</p>}</div>
             </div>
           )}
 
@@ -162,12 +182,12 @@ export default function HLSyncModal({ open, onClose }) {
             )}
             <div className="flex gap-3 ml-auto">
               <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-neutral hover:text-white hover:bg-dark-600">Cancel</button>
-              <button onClick={handleSync} disabled={status === 'progress'}
+              <button onClick={status === 'preview' ? commitImport : handleSync} disabled={status === 'progress'}
                 className="px-6 py-2 bg-gradient-to-r from-[#3dd9b3] to-[#50e3c2] hover:from-[#50e3c2] hover:to-[#6aebd0] text-dark-900 text-sm font-semibold rounded-lg disabled:opacity-50">
                 {status === 'progress' ? (
                   <><div className="w-4 h-4 border-2 border-dark-900 border-t-transparent rounded-full animate-spin inline-block mr-2" />Syncing...</>
                 ) : (
-                  <><i className="fa-solid fa-bolt mr-1.5" />{status === 'done' ? 'Sync Again' : 'Sync Trades'}</>
+                  <><i className="fa-solid fa-bolt mr-1.5" />{status === 'preview' ? `Import ${preview?.fresh.length || 0}` : status === 'done' ? 'Sync Again' : 'Preview Sync'}</>
                 )}
               </button>
             </div>

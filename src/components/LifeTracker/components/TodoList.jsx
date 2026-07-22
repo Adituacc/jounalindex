@@ -257,24 +257,27 @@ export default function TodoList() {
         <div className="flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-700">
           <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
           <span>Adding subtask to: <strong>{todos.find(t => t.id === subtaskParentId)?.text}</strong></span>
-          <button onClick={() => setSubtaskParentId(null)} className="ml-auto text-violet-400 hover:text-violet-600">✕</button>
+          <button type="button" aria-label="Cancel adding subtask" onClick={() => setSubtaskParentId(null)} className="ml-auto text-violet-400 hover:text-violet-600">✕</button>
         </div>
       )}
 
       <form onSubmit={addTodo} className="grid gap-2 rounded-[28px] border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1.35fr)_160px_140px_160px_150px_140px_140px_auto]">
         <input
+          aria-label="Task description"
           value={draft.text}
           onChange={e => setDraft(prev => ({ ...prev, text: e.target.value }))}
           placeholder="What needs to be done?"
           className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-4 focus:ring-sky-100"
         />
         <input
+          aria-label="Due date"
           type="date"
           value={draft.dueDate}
           onChange={e => setDraft(prev => ({ ...prev, dueDate: e.target.value }))}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-4 focus:ring-sky-100"
         />
         <select
+          aria-label="Priority"
           value={draft.priority}
           onChange={e => setDraft(prev => ({ ...prev, priority: e.target.value }))}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-4 focus:ring-sky-100"
@@ -284,12 +287,14 @@ export default function TodoList() {
           <option value="low">Low</option>
         </select>
         <input
+          aria-label="Tag or project"
           value={draft.tag}
           onChange={e => setDraft(prev => ({ ...prev, tag: e.target.value }))}
           placeholder="Tag or project"
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-4 focus:ring-sky-100"
         />
         <select
+          aria-label="Recurrence"
           value={draft.recurrence}
           onChange={e => setDraft(prev => ({ ...prev, recurrence: e.target.value }))}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-4 focus:ring-sky-100"
@@ -300,12 +305,14 @@ export default function TodoList() {
           <option value="monthly">Monthly</option>
         </select>
         <input
+          aria-label="Reminder time"
           type="time"
           value={draft.reminderTime}
           onChange={e => setDraft(prev => ({ ...prev, reminderTime: e.target.value }))}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-4 focus:ring-sky-100"
         />
         <input
+          aria-label="Estimated minutes"
           type="number"
           min="0"
           step="5"
@@ -324,6 +331,7 @@ export default function TodoList() {
 
       <div className="grid gap-2 lg:grid-cols-[1fr_auto]">
         <input
+          aria-label="Search tasks"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by task, tag, priority, or date"

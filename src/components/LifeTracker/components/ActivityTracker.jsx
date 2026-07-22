@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  DEFAULT_ACTIVITIES,
   getActivitySeries,
   getActiveDaysThisWeek,
   loadActivityData,
   STORAGE_KEYS,
   todayKey,
 } from '../lib/analytics'
-import { readJson, writeJson } from '../lib/storage'
+import { writeJson } from '../lib/storage'
 
 const STORAGE_KEY = STORAGE_KEYS.activities
 const MOOD_OPTIONS = [

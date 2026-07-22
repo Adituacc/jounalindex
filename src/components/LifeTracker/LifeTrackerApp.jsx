@@ -56,7 +56,7 @@ const TABS = [
   },
   {
     key: 'notes',
-    label: 'Notes',
+    label: 'Quick Notes',
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -112,12 +112,12 @@ export default function LifeTrackerApp() {
   }
 
   return (
-    <div className={`lt-scope px-4 py-6 sm:px-6 lg:px-8 transition-colors duration-300 ${
+    <div className={`lt-scope min-w-0 px-3 pb-6 pt-16 sm:px-6 sm:py-6 lg:px-8 transition-colors duration-300 ${
       darkMode
         ? 'lt-dark bg-slate-950 text-slate-100'
         : 'bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.18),_transparent_30%),linear-gradient(180deg,_#f8fafc_0%,_#f1f5f9_100%)] text-slate-900'
     }`}>
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="mx-auto flex min-w-0 w-full max-w-6xl flex-col gap-6">
         <header className="overflow-hidden rounded-[32px] border border-white/70 bg-white/75 shadow-[0_20px_80px_-40px_rgba(15,23,42,0.4)] backdrop-blur-xl">
           <div className="flex flex-col gap-6 p-5 sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -130,7 +130,7 @@ export default function LifeTrackerApp() {
                     Life Tracker
                   </h1>
                   <p className="mt-1 max-w-2xl text-sm text-slate-600 sm:text-base">
-                    A single place for tasks, habits, and notes that actually helps you steer the day.
+                    A focused place for tasks, habits, and lightweight notes that helps you steer the day.
                   </p>
                 </div>
               </div>
@@ -197,7 +197,7 @@ export default function LifeTrackerApp() {
               </article>
 
               <article className="rounded-2xl bg-amber-50 px-5 py-4 text-amber-950 ring-1 ring-amber-100">
-                <p className="text-xs uppercase tracking-[0.18em] text-amber-700">Notes</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-amber-700">Quick Notes</p>
                 <p className="mt-3 text-3xl font-semibold">{snapshot.notes.total}</p>
                 <p className="mt-2 text-sm text-amber-800">{snapshot.notes.pinned} pinned for quick recall.</p>
               </article>
@@ -224,14 +224,14 @@ export default function LifeTrackerApp() {
               </article>
             </div>
 
-            <nav className="hidden rounded-2xl bg-slate-100/80 p-1.5 sm:grid sm:grid-cols-6 gap-2">
+            <nav className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100/80 p-1.5 sm:grid-cols-3 lg:grid-cols-6">
               {TABS.map(nextTab => renderTabButton(nextTab))}
             </nav>
           </div>
         </header>
 
-        <main className="grid flex-1">
-          <section className="rounded-[32px] border border-white/70 bg-white/85 p-5 shadow-[0_20px_80px_-45px_rgba(15,23,42,0.45)] backdrop-blur sm:p-7">
+        <main className="grid min-w-0 flex-1">
+          <section className="min-w-0 rounded-[32px] border border-white/70 bg-white/85 p-5 shadow-[0_20px_80px_-45px_rgba(15,23,42,0.45)] backdrop-blur sm:p-7">
             {tab === 'insights' && <Insights onNavigate={setTab} />}
             {tab === 'focus' && <FocusStudio />}
             {tab === 'planner' && <PlannerHub />}

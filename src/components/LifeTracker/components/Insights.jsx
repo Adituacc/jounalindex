@@ -136,7 +136,7 @@ export default function Insights({ onNavigate }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {insights.isEmpty && (
         <section className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm ring-1 ring-sky-100 sm:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -269,8 +269,8 @@ export default function Insights({ onNavigate }) {
         </article>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr]">
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[1.2fr_0.9fr]">
+        <section className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Upcoming Agenda</p>
@@ -309,13 +309,13 @@ export default function Insights({ onNavigate }) {
           </div>
         </section>
 
-        <section className="grid gap-4">
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="grid min-w-0 gap-4">
+          <div className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Performance</p>
             <h3 className="mt-2 text-2xl font-semibold text-slate-950">14-day trend</h3>
-            <div className="mt-5 flex items-end gap-2">
+            <div className="mt-5 flex min-w-0 items-end gap-1 sm:gap-2">
               {insights.series.map(day => (
-                <div key={day.key} className="flex flex-1 flex-col items-center gap-2">
+                <div key={day.key} className="flex min-w-0 flex-1 flex-col items-center gap-2">
                   <div className="flex h-28 w-full items-end rounded-2xl bg-slate-100 p-1">
                     <div
                       className="w-full rounded-xl bg-sky-500 transition-[height]"
@@ -323,7 +323,7 @@ export default function Insights({ onNavigate }) {
                       title={`${day.dateLabel}: ${day.count}`}
                     />
                   </div>
-                  <span className="text-[10px] text-slate-400">{day.label}</span>
+                  <span className="w-full truncate text-center text-[9px] text-slate-400 sm:text-[10px]">{day.label}</span>
                 </div>
               ))}
             </div>
@@ -333,7 +333,7 @@ export default function Insights({ onNavigate }) {
           </div>
 
           <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recent Notes</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recent Quick Notes</p>
             <div className="mt-4 space-y-3">
               {insights.recentNotes.length === 0 ? (
                 <p className="text-sm text-slate-400">No notes captured yet.</p>

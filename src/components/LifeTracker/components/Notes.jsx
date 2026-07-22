@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { loadNotes, STORAGE_KEYS } from '../lib/analytics'
-import { readJson, writeJson } from '../lib/storage'
+import { writeJson } from '../lib/storage'
 
 const STORAGE_KEY = STORAGE_KEYS.notes
 const TEMPLATES = [
@@ -131,7 +131,7 @@ export default function Notes() {
       <aside className="space-y-4 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Notes</h2>
+            <h2 className="text-2xl font-bold text-slate-900">Quick Notes</h2>
             <p className="text-sm text-slate-500">{notes.length} note{notes.length !== 1 ? 's' : ''}</p>
           </div>
           <button
@@ -165,6 +165,7 @@ export default function Notes() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
+          aria-label="Search quick notes"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search notes…"
@@ -261,6 +262,7 @@ export default function Notes() {
             </div>
 
             <input
+              aria-label="Note title"
               value={activeNote.title}
               onChange={e => updateNote(activeNote.id, 'title', e.target.value)}
               placeholder="Note title…"
@@ -268,6 +270,7 @@ export default function Notes() {
             />
 
             <input
+              aria-label="Note tags"
               value={activeNote.tags.join(', ')}
               onChange={e => updateTags(e.target.value)}
               placeholder="Tags, separated by commas"
@@ -275,6 +278,7 @@ export default function Notes() {
             />
 
             <textarea
+              aria-label="Note body"
               value={activeNote.body}
               onChange={e => updateNote(activeNote.id, 'body', e.target.value)}
               placeholder="Start writing…"

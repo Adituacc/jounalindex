@@ -1,11 +1,51 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useToast } from '../context/ToastContext';
+import { useTrades } from '../context/TradeContext';
+import { normalizeJournalBackup } from '../utils/journalData';
+import { formatMoneyFull } from '../utils/formatters';
+
+function sanitizeUrl(value, allowImages = false) {
+  try {
+    const url = new URL(value, window.location.origin);
+    const allowed = allowImages ? ['http:', 'https:', 'data:'] : ['http:', 'https:', 'mailto:'];
+    if (!allowed.includes(url.protocol)) return '';
+    if (url.protocol === 'data:' && !/^data:image\/(png|gif|jpeg|webp);/i.test(value)) return '';
+    return value;
+  } catch {
+    return '';
+  }
+}
+
+function sanitizeHtml(html) {
+  if (!html || typeof document === 'undefined') return html || '';
+  const template = document.createElement('template');
+  template.innerHTML = String(html);
+  template.content.querySelectorAll('script,style,iframe,object,embed,form').forEach(node => node.remove());
+  template.content.querySelectorAll('*').forEach(node => {
+    Array.from(node.attributes).forEach(attribute => {
+      const name = attribute.name.toLowerCase();
+      if (name.startsWith('on') || name === 'srcdoc') node.removeAttribute(attribute.name);
+    });
+    if (node.hasAttribute('href') && !sanitizeUrl(node.getAttribute('href'))) node.removeAttribute('href');
+    if (node.hasAttribute('src') && !sanitizeUrl(node.getAttribute('src'), true)) node.removeAttribute('src');
+  });
+  return template.innerHTML;
+}
+
+function escapeHtmlText(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 function loadJournalData() {
   try {
     const raw = localStorage.getItem('notebookData');
     if (raw) {
       const data = JSON.parse(raw);
-      for (const k in data.notes) { if (!data.notes[k].tags) data.notes[k].tags = []; if (data.notes[k].pinned === undefined) data.notes[k].pinned = false; }
+      for (const k in data.notes) {
+        if (!data.notes[k].tags) data.notes[k].tags = [];
+        if (data.notes[k].pinned === undefined) data.notes[k].pinned = false;
+        data.notes[k].content = sanitizeHtml(data.notes[k].content);
+      }
       return data;
     }
   } catch { /* fallback */ }
@@ -21,15 +61,32 @@ function loadJournalData() {
   };
 }
 
-// Debounce helper
-function useDebounce(fn, delay) {
-  const timerRef = useRef(null);
-  const debouncedFn = useCallback((...args) => {
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => fn(...args), delay);
-  }, [fn, delay]);
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-  return debouncedFn;
+// Keep a separate timer per note so switching notes cannot discard or misapply a pending save.
+function useKeyedDebounce(fn, delay) {
+  const timersRef = useRef(new Map());
+  const latestFnRef = useRef(fn);
+  useEffect(() => { latestFnRef.current = fn; }, [fn]);
+
+  const schedule = useCallback((key, ...args) => {
+    clearTimeout(timersRef.current.get(key));
+    const timer = setTimeout(() => {
+      timersRef.current.delete(key);
+      latestFnRef.current(key, ...args);
+    }, delay);
+    timersRef.current.set(key, timer);
+  }, [delay]);
+
+  const cancel = useCallback((key) => {
+    clearTimeout(timersRef.current.get(key));
+    timersRef.current.delete(key);
+  }, []);
+
+  useEffect(() => () => {
+    timersRef.current.forEach(timer => clearTimeout(timer));
+    timersRef.current.clear();
+  }, []);
+
+  return { schedule, cancel };
 }
 
 // Color palette for text/highlight pickers
@@ -95,7 +152,9 @@ function ColorPicker({ onPick, onClose }) {
   );
 }
 
-export default function Journal() {
+export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedTradeConsumed, onLinkedDateConsumed }) {
+  const showToast = useToast();
+  const { trades, updateTrade } = useTrades();
   const [appData, setAppData] = useState(loadJournalData);
   const [activeFolder, setActiveFolder] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);
@@ -113,13 +172,23 @@ export default function Journal() {
   const calBtnRef = useRef(null);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [focusMode, setFocusMode] = useState(false);
+  const [undoDelete, setUndoDelete] = useState(null);
   const saveTimerRef = useRef(null);
+  const appDataRef = useRef(appData);
+  const loadedNoteIdRef = useRef(null);
+  const importInputRef = useRef(null);
+  const savedSelectionRef = useRef(null);
 
   const fontSizes = [10, 13, 15, 18, 24, 32, 48];
 
-  const save = useCallback((data) => {
+  const save = useCallback((nextOrUpdater) => {
+    const data = typeof nextOrUpdater === 'function'
+      ? nextOrUpdater(appDataRef.current)
+      : nextOrUpdater;
+    appDataRef.current = data;
     setAppData(data);
     localStorage.setItem('notebookData', JSON.stringify(data));
+    return data;
   }, []);
 
   // Filtered & sorted notes
@@ -164,26 +233,50 @@ export default function Journal() {
 
   // Load note into editor
   useEffect(() => {
-    if (editorRef.current && currentNote) {
-      if (editorRef.current.innerHTML !== currentNote.content) {
-        editorRef.current.innerHTML = currentNote.content;
-      }
-    } else if (editorRef.current && !currentNote) {
-      editorRef.current.innerHTML = '';
+    if (!currentNote) {
+      loadedNoteIdRef.current = null;
+      return;
     }
+    if (!editorRef.current || loadedNoteIdRef.current === noteId) return;
+
+    editorRef.current.innerHTML = currentNote.content;
+    loadedNoteIdRef.current = noteId;
+    savedSelectionRef.current = null;
     updateWordCount();
-  }, [noteId, currentNote?.content, updateWordCount]);
+  }, [noteId, currentNote, updateWordCount]);
+
+  const persistNoteContent = useCallback((targetNoteId, rawHtml) => {
+    if (!targetNoteId) return;
+    setSaveStatus('saving');
+    const content = sanitizeHtml(rawHtml);
+    save((data) => {
+      const note = data.notes[targetNoteId];
+      if (!note || note.content === content) return data;
+      return {
+        ...data,
+        notes: {
+          ...data.notes,
+          [targetNoteId]: { ...note, content, updated: new Date().toISOString() },
+        },
+      };
+    });
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveStatus('saved'), 400);
+  }, [save]);
+
+  const { schedule: scheduleNoteSave, cancel: cancelNoteSave } = useKeyedDebounce(persistNoteContent, 300);
 
   const saveNote = useCallback(() => {
     if (!noteId || !editorRef.current) return;
-    setSaveStatus('saving');
-    const updated = { ...appData, notes: { ...appData.notes, [noteId]: { ...appData.notes[noteId], content: editorRef.current.innerHTML, updated: new Date().toISOString() } } };
-    save(updated);
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => setSaveStatus('saved'), 400);
-  }, [noteId, appData, save]);
+    cancelNoteSave(noteId);
+    persistNoteContent(noteId, editorRef.current.innerHTML);
+  }, [noteId, cancelNoteSave, persistNoteContent]);
 
-  const debouncedSaveNote = useDebounce(saveNote, 300);
+  const debouncedSaveNote = useCallback(() => {
+    if (!noteId || !editorRef.current) return;
+    setSaveStatus('saving');
+    scheduleNoteSave(noteId, editorRef.current.innerHTML);
+  }, [noteId, scheduleNoteSave]);
 
   const handleEditorInput = useCallback(() => {
     debouncedSaveNote();
@@ -303,9 +396,13 @@ export default function Journal() {
   const deleteFolder = (e, id) => {
     e.stopPropagation();
     if (!confirm("Delete folder and all notes inside?")) return;
+    const folder = appData.folders.find(f => f.id === id);
+    const deletedNotes = Object.fromEntries(Object.entries(appData.notes).filter(([, note]) => note.folderId === id));
     const newNotes = { ...appData.notes };
     for (const k in newNotes) { if (newNotes[k].folderId === id) delete newNotes[k]; }
     save({ ...appData, folders: appData.folders.filter(f => f.id !== id), notes: newNotes });
+    setUndoDelete({ folders: folder ? [folder] : [], notes: deletedNotes, message: `Deleted ${folder?.name || 'folder'}` });
+    if (deletedNotes[noteId]) setNoteId(null);
     if (activeFolder === id) setActiveFolder('all');
   };
 
@@ -318,13 +415,83 @@ export default function Journal() {
     setNoteId(nid);
   };
 
+  useEffect(() => {
+    if (!linkedTradeId) return;
+    const trade = trades.find(item => item.id === linkedTradeId);
+    if (!trade) { onLinkedTradeConsumed?.(); return; }
+    const targetNoteId = `trade-notes_${trade.date}`;
+    save((data) => {
+      const existing = data.notes[targetNoteId];
+      const relatedTradeIds = [...new Set([...(existing?.relatedTradeIds || []), trade.id])];
+      const content = existing?.content || `<h2>Trade review — ${escapeHtmlText(trade.symbol)}</h2><p><strong>Result:</strong> ${escapeHtmlText(trade.side)} · ${escapeHtmlText(formatMoneyFull(trade.pnl))}</p><p><strong>Setup:</strong> ${escapeHtmlText(trade.setup || 'Add setup')}</p><p><strong>What happened?</strong></p><p><br></p><p><strong>What did I learn?</strong></p><p><br></p>`;
+      return {
+        ...data,
+        notes: {
+          ...data.notes,
+          [targetNoteId]: existing
+            ? { ...existing, relatedTradeIds, updated: new Date().toISOString() }
+            : { id: targetNoteId, folderId: 'trade-notes', date: trade.date, tags: ['trade-review'], pinned: false, relatedTradeIds, content, created: new Date().toISOString(), updated: new Date().toISOString() },
+        },
+      };
+    });
+    updateTrade(trade.id, { journalNoteId: targetNoteId });
+    setActiveFolder('trade-notes');
+    setNoteId(targetNoteId);
+    onLinkedTradeConsumed?.();
+  }, [linkedTradeId, trades, save, updateTrade, onLinkedTradeConsumed]);
+
+  useEffect(() => {
+    if (!linkedDate) return;
+    const dayTrades = trades.filter(trade => trade.date === linkedDate);
+    const targetNoteId = `daily-journal_${linkedDate}`;
+    const pnl = dayTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+    const fillCount = dayTrades.reduce((sum, trade) => sum + (trade.fillCount || 1), 0);
+    save((data) => {
+      const existing = data.notes[targetNoteId];
+      const relatedTradeIds = [...new Set([...(existing?.relatedTradeIds || []), ...dayTrades.map(trade => trade.id)])];
+      const tradeList = dayTrades.map(trade => `<li>${escapeHtmlText(trade.symbol)} · ${escapeHtmlText(trade.side)} · ${escapeHtmlText(formatMoneyFull(trade.pnl))}${trade.strategy ? ` · ${escapeHtmlText(trade.strategy)}` : ''}</li>`).join('');
+      const content = existing?.content || `<h2>Daily trading recap</h2><p><strong>${dayTrades.length} logical trades</strong> from ${fillCount.toLocaleString()} fills · <strong>${escapeHtmlText(formatMoneyFull(pnl))}</strong></p><ul>${tradeList}</ul><p><strong>What went well?</strong></p><p><br></p><p><strong>What needs improvement?</strong></p><p><br></p><p><strong>Rule for the next session</strong></p><p><br></p>`;
+      return { ...data, notes: { ...data.notes, [targetNoteId]: existing ? { ...existing, relatedTradeIds, updated: new Date().toISOString() } : { id: targetNoteId, folderId: 'daily-journal', date: linkedDate, tags: ['daily-recap'], pinned: false, relatedTradeIds, content, created: new Date().toISOString(), updated: new Date().toISOString() } } };
+    });
+    dayTrades.forEach(trade => updateTrade(trade.id, { journalNoteId: targetNoteId }));
+    setActiveFolder('daily-journal');
+    setNoteId(targetNoteId);
+    onLinkedDateConsumed?.();
+  }, [linkedDate, trades, save, updateTrade, onLinkedDateConsumed]);
+
   const deleteNote = () => {
     if (!noteId || !confirm('Delete this note?')) return;
+    const deletedNote = appData.notes[noteId];
     const newNotes = { ...appData.notes };
     delete newNotes[noteId];
     save({ ...appData, notes: newNotes });
+    setUndoDelete({ folders: [], notes: { [noteId]: deletedNote }, message: 'Deleted note' });
     setNoteId(null);
   };
+
+  const restoreDeleted = () => {
+    if (!undoDelete) return;
+    const restoredIds = Object.keys(undoDelete.notes);
+    save((data) => {
+      const foldersToRestore = undoDelete.folders.filter(folder => !data.folders.some(existing => existing.id === folder.id));
+      return {
+        ...data,
+        folders: [...data.folders, ...foldersToRestore],
+        // Never replace newer content if an entry with the same ID was recreated.
+        notes: { ...undoDelete.notes, ...data.notes },
+      };
+    });
+    if (undoDelete.folders[0]) setActiveFolder(undoDelete.folders[0].id);
+    if (restoredIds[0]) setNoteId(restoredIds[0]);
+    setUndoDelete(null);
+    showToast('Deletion undone.', 'success');
+  };
+
+  useEffect(() => {
+    if (!undoDelete) return undefined;
+    const timer = setTimeout(() => setUndoDelete(null), 10000);
+    return () => clearTimeout(timer);
+  }, [undoDelete]);
 
   const togglePin = () => {
     if (!noteId) return;
@@ -371,6 +538,9 @@ export default function Journal() {
     restoreSelection();
     editorRef.current?.focus();
     if (type === 'hr') document.execCommand('insertHorizontalRule');
+    else if (type === 'reflection') document.execCommand('insertHTML', false,
+      '<h2>Reflection</h2><p><strong>What went well?</strong></p><p><br></p><p><strong>What was difficult?</strong></p><p><br></p><p><strong>What did I learn?</strong></p><p><br></p><p><strong>One priority for tomorrow</strong></p><p><br></p>'
+    );
     else if (type === 'pagebreak') document.execCommand('insertHTML', false, '<div class="j-page-break" contenteditable="false">--- Page Break ---</div><p><br></p>');
     else if (type === 'table') document.execCommand('insertHTML', false, '<table contenteditable="true"><tbody><tr><td><br></td><td><br></td></tr><tr><td><br></td><td><br></td></tr></tbody></table><p><br></p>');
     else if (type === 'checklist') {
@@ -397,7 +567,8 @@ export default function Journal() {
   const insertImage = (url) => {
     restoreSelection();
     editorRef.current?.focus();
-    const sanitized = url.replace(/["'<>]/g, '');
+    const sanitized = sanitizeUrl(url, true);
+    if (!sanitized) return;
     document.execCommand('insertHTML', false, `<img src="${encodeURI(sanitized)}" style="display:block;max-width:100%;margin:15px 0;border-radius:6px;">`);
     saveNote();
   };
@@ -405,7 +576,8 @@ export default function Journal() {
   const insertLink = (url) => {
     restoreSelection();
     editorRef.current?.focus();
-    const sanitized = url.replace(/["'<>]/g, '');
+    const sanitized = sanitizeUrl(url);
+    if (!sanitized) return;
     document.execCommand('createLink', false, encodeURI(sanitized));
     debouncedSaveNote();
   };
@@ -419,9 +591,45 @@ export default function Journal() {
   };
 
   const exportData = () => {
-    const s = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData));
+    let data = appDataRef.current;
+    if (noteId && editorRef.current && data.notes[noteId]) {
+      const content = sanitizeHtml(editorRef.current.innerHTML);
+      if (data.notes[noteId].content !== content) {
+        data = {
+          ...data,
+          notes: { ...data.notes, [noteId]: { ...data.notes[noteId], content, updated: new Date().toISOString() } },
+        };
+        cancelNoteSave(noteId);
+        save(data);
+      }
+    }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a');
-    a.href = s; a.download = `notebook_backup_${getDateKey(new Date())}.json`; a.click();
+    a.href = url;
+    a.download = `notebook_backup_${getDateKey(new Date())}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Journal backup exported.', 'success');
+  };
+
+  const importData = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const imported = normalizeJournalBackup(JSON.parse(await file.text()), sanitizeHtml);
+      if (!confirm(`Replace the journal with this backup (${Object.keys(imported.notes).length} notes)?`)) return;
+      save(imported);
+      setNoteId(null);
+      setActiveFolder('all');
+      setTagFilter(null);
+      setSelectedIds(new Set());
+      setUndoDelete(null);
+      showToast('Journal backup restored.', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not restore this backup.', 'error');
+    } finally {
+      event.target.value = '';
+    }
   };
 
   // Calendar popup
@@ -462,9 +670,11 @@ export default function Journal() {
   };
   const deleteSelected = () => {
     if (!confirm("Delete all selected notes?")) return;
+    const deletedNotes = Object.fromEntries(Object.entries(appData.notes).filter(([id]) => selectedIds.has(id)));
     const newNotes = { ...appData.notes };
     selectedIds.forEach(id => delete newNotes[id]);
     save({ ...appData, notes: newNotes });
+    setUndoDelete({ folders: [], notes: deletedNotes, message: `Deleted ${selectedIds.size} notes` });
     setSelectedIds(new Set());
     if (selectedIds.has(noteId)) setNoteId(null);
   };
@@ -486,7 +696,6 @@ export default function Journal() {
   }, []);
 
   // Save selection before opening popover (so we can restore it when applying color/link)
-  const savedSelectionRef = useRef(null);
   const saveSelection = () => {
     const sel = window.getSelection();
     if (sel.rangeCount > 0) {
@@ -505,13 +714,14 @@ export default function Journal() {
   };
 
   const currentFolder = currentNote ? appData.folders.find(f => f.id === currentNote.folderId) : null;
+  const relatedTrades = currentNote?.relatedTradeIds?.map(id => trades.find(trade => trade.id === id)).filter(Boolean) || [];
   const readingTime = wordCount > 0 ? Math.max(1, Math.ceil(wordCount / 200)) : 0;
 
   return (
-    <div className="flex flex-col" style={{ height: '100vh' }}>
-      <div className="flex-1 flex flex-col p-6 overflow-hidden gap-4" style={{ height: '100%' }}>
+    <div className="flex min-h-screen flex-col lg:h-screen lg:min-h-0">
+      <div className="flex flex-1 flex-col gap-4 overflow-visible p-3 pt-16 sm:p-4 sm:pt-16 md:pt-4 lg:overflow-hidden lg:p-6" style={{ height: '100%' }}>
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 lg:gap-4">
           <div className="flex items-center gap-3 min-w-[200px]">
             <div className="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center">
               <i className="fas fa-book-open text-accent text-sm" />
@@ -526,7 +736,7 @@ export default function Journal() {
             <input type="text" className="bg-transparent border-none text-white text-sm w-full outline-none placeholder:text-neutral/50" placeholder="Search notes..." value={searchQ} onChange={e => setSearchQ(e.target.value)} />
             {searchQ && <i className="fas fa-times text-neutral text-xs cursor-pointer hover:text-white ml-2" onClick={() => setSearchQ('')} />}
           </div>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 lg:ml-auto">
             <button
               className={`bg-transparent border text-neutral w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer hover:bg-dark-800 hover:text-white transition-all ${filterNonEmpty ? 'border-accent text-accent' : 'border-dark-600'}`}
               onClick={() => setFilterNonEmpty(f => !f)}
@@ -541,14 +751,27 @@ export default function Journal() {
             >
               <i className={`fas ${focusMode ? 'fa-compress' : 'fa-expand'} text-xs`} />
             </button>
-            <button className="bg-transparent border border-dark-600 text-neutral w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer hover:bg-dark-800 hover:text-white transition-all" onClick={exportData} title="Export backup">
+            <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={importData} />
+            <button type="button" className="bg-transparent border border-dark-600 text-neutral w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer hover:bg-dark-800 hover:text-white transition-all" onClick={() => importInputRef.current?.click()} title="Restore journal backup" aria-label="Restore journal backup">
+              <i className="fas fa-file-import text-xs" />
+            </button>
+            <button type="button" className="bg-transparent border border-dark-600 text-neutral w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer hover:bg-dark-800 hover:text-white transition-all" onClick={exportData} title="Export journal backup" aria-label="Export journal backup">
               <i className="fas fa-file-export text-xs" />
             </button>
           </div>
         </div>
 
+        {undoDelete && (
+          <div className="flex items-center gap-3 rounded-xl border border-accent/30 bg-accent/10 px-4 py-2.5 text-sm" role="status" aria-live="polite">
+            <i className="fas fa-trash-restore text-accent" />
+            <span className="min-w-0 flex-1 truncate text-white/80">{undoDelete.message}</span>
+            <button type="button" className="font-semibold text-accent hover:text-white transition-colors" onClick={restoreDeleted}>Undo</button>
+            <button type="button" className="text-neutral hover:text-white transition-colors" onClick={() => setUndoDelete(null)} aria-label="Dismiss undo"><i className="fas fa-times" /></button>
+          </div>
+        )}
+
         {/* Main notebook */}
-        <div className="flex-1 flex gap-4 overflow-hidden">
+        <div className="journal-notebook flex flex-1 flex-col gap-4 overflow-visible lg:flex-row lg:overflow-hidden">
           {/* Folder sidebar */}
           <div className={`j-nav-sidebar ${navCollapsed || focusMode ? 'j-collapsed' : ''}`} style={focusMode ? { width: 0, border: 'none', opacity: 0, overflow: 'hidden' } : undefined}>
             {(navCollapsed && !focusMode) && (
@@ -654,7 +877,7 @@ export default function Journal() {
           </div>
 
           {/* Editor */}
-          <div className={`flex-1 overflow-y-auto flex flex-col min-w-0 rounded-xl transition-all ${focusMode ? 'max-w-[800px] mx-auto' : ''}`}>
+          <div className={`min-h-[520px] flex-1 overflow-y-auto flex flex-col min-w-0 rounded-xl transition-all lg:min-h-0 ${focusMode ? 'max-w-[800px] mx-auto' : ''}`}>
             {!currentNote ? (
               /* Empty state */
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
@@ -708,7 +931,7 @@ export default function Journal() {
                   {wordCount > 0 && <span><i className="fas fa-font mr-1" />{wordCount} words</span>}
                   {readingTime > 0 && <span><i className="far fa-eye mr-1" />{readingTime} min read</span>}
                   {/* Save status */}
-                  <span className={`j-save-indicator ${saveStatus === 'saving' ? 'j-saving' : saveStatus === 'saved' ? 'j-saved' : ''}`}>
+                  <span aria-live="polite" className={`j-save-indicator ${saveStatus === 'saving' ? 'j-saving' : saveStatus === 'saved' ? 'j-saved' : ''}`}>
                     {saveStatus === 'saving' && <><i className="fas fa-circle-notch fa-spin mr-1" />Saving</>}
                     {saveStatus === 'saved' && <><i className="fas fa-check mr-1" />Saved</>}
                   </span>
@@ -723,6 +946,13 @@ export default function Journal() {
                     <i className="fas fa-plus text-[9px]" /> tag
                   </div>
                 </div>
+
+                {relatedTrades.length > 0 && (
+                  <div className="mb-4 rounded-xl border border-accent/20 bg-accent/5 p-3">
+                    <div className="mb-2 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-accent">Related logical trades</span><span className="text-[10px] text-neutral">{relatedTrades.reduce((sum, trade) => sum + (trade.fillCount || 1), 0).toLocaleString()} fills grouped into {relatedTrades.length}</span></div>
+                    <div className="flex flex-wrap gap-2">{relatedTrades.map(trade => <div key={trade.id} className="rounded-lg border border-dark-600 bg-dark-900 px-3 py-2 text-xs"><strong>{trade.symbol} · {trade.side}</strong><span className={`ml-2 ${trade.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>{formatMoneyFull(trade.pnl)}</span>{trade.strategy && <span className="ml-2 text-neutral">{trade.strategy}</span>}</div>)}</div>
+                  </div>
+                )}
 
                 {/* Editor box */}
                 <div className="j-editor-box flex-1">
@@ -795,6 +1025,7 @@ export default function Journal() {
                       <button className="j-toolbar-btn" onClick={(e) => toggleDropdown(e, 'insert')}><i className="fas fa-plus" /></button>
                       {openDropdown === 'insert' && (
                         <div className="j-dropdown-menu" style={{ display: 'flex', width: 210 }} onClick={e => e.stopPropagation()}>
+                          <div className="j-dropdown-item" onClick={() => { insertItem('reflection'); setOpenDropdown(null); }}><span className="j-format-icon"><i className="fas fa-clipboard-list" /></span> Reflection template</div>
                           <div className="j-dropdown-item" onClick={() => { insertItem('hr'); setOpenDropdown(null); }}><span className="j-format-icon">—</span> Horizontal rule</div>
                           <div className="j-dropdown-item" onClick={() => { insertItem('pagebreak'); setOpenDropdown(null); }}><span className="j-format-icon"><i className="fas fa-cut" /></span> Page break</div>
                           <div className="j-dropdown-item" onClick={() => { setOpenDropdown('image'); }}><span className="j-format-icon"><i className="fas fa-image" /></span> Image</div>
@@ -833,7 +1064,14 @@ export default function Journal() {
                     }} title="Duplicate note"><i className="far fa-copy text-xs" /></button>
                     <button className="j-toolbar-btn j-btn-danger" onClick={deleteNote} title="Delete note"><i className="fas fa-trash text-xs" /></button>
                   </div>
-                  <div ref={editorRef} className="j-note-editor" contentEditable="true" onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onMouseUp={saveSelection} onKeyUp={saveSelection} spellCheck="true"
+                  <div ref={editorRef} className="j-note-editor" contentEditable="true" role="textbox" aria-label="Journal entry editor" aria-multiline="true" onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onMouseUp={saveSelection} onKeyUp={saveSelection} onBlur={saveNote} spellCheck="true"
+                    onPaste={(event) => {
+                      event.preventDefault();
+                      const html = event.clipboardData.getData('text/html');
+                      const text = event.clipboardData.getData('text/plain');
+                      document.execCommand('insertHTML', false, html ? sanitizeHtml(html) : text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>'));
+                      debouncedSaveNote();
+                    }}
                     onClick={(e) => {
                       if (e.target.tagName === 'INPUT' && e.target.type === 'checkbox') {
                         setTimeout(() => {

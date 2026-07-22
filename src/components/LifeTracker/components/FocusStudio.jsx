@@ -15,11 +15,21 @@ function formatTime(seconds) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
+function getRemainingSeconds(data) {
+  if (data.running && data.endsAt) {
+    return Math.max(0, Math.ceil((data.endsAt - Date.now()) / 1000));
+  }
+  return data.remainingSeconds ?? data.durationMinutes * 60;
+}
+
 export default function FocusStudio() {
   const [focusData, setFocusData] = useState(() => loadFocusData())
   const [todos, setTodos] = useState(() => loadTodos())
-  const [remainingSeconds, setRemainingSeconds] = useState(loadFocusData().durationMinutes * 60)
-  const [isRunning, setIsRunning] = useState(false)
+  const [remainingSeconds, setRemainingSeconds] = useState(() => getRemainingSeconds(loadFocusData()))
+  const [isRunning, setIsRunning] = useState(() => {
+    const data = loadFocusData()
+    return data.running && getRemainingSeconds(data) > 0
+  })
   const notifiedRef = useRef(false)
 
   useEffect(() => {
@@ -27,9 +37,9 @@ export default function FocusStudio() {
       const next = loadFocusData()
       setFocusData(next)
       setTodos(loadTodos())
-      if (!isRunning) {
-        setRemainingSeconds(next.durationMinutes * 60)
-      }
+      const remaining = getRemainingSeconds(next)
+      setRemainingSeconds(remaining)
+      setIsRunning(next.running && remaining > 0)
     }
 
     window.addEventListener('lifetracker:sync', refresh)
@@ -45,12 +55,12 @@ export default function FocusStudio() {
       return undefined
     }
 
-    const timer = window.setInterval(() => {
-      setRemainingSeconds(value => Math.max(value - 1, 0))
-    }, 1000)
+    const tick = () => setRemainingSeconds(getRemainingSeconds(focusData))
+    tick()
+    const timer = window.setInterval(tick, 1000)
 
     return () => window.clearInterval(timer)
-  }, [isRunning])
+  }, [focusData, isRunning])
 
   useEffect(() => {
     if (remainingSeconds !== 0 || notifiedRef.current) {
@@ -70,6 +80,9 @@ export default function FocusStudio() {
 
     const next = {
       ...focusData,
+      running: false,
+      endsAt: null,
+      remainingSeconds: focusData.durationMinutes * 60,
       sessions: [completedSession, ...focusData.sessions].slice(0, 20),
     }
     setFocusData(next)
@@ -103,14 +116,16 @@ export default function FocusStudio() {
 
   function applyPreset(minutes) {
     notifiedRef.current = false
-    updateFocusData({ durationMinutes: minutes })
+    updateFocusData({ durationMinutes: minutes, running: false, endsAt: null, remainingSeconds: minutes * 60 })
     setRemainingSeconds(minutes * 60)
     setIsRunning(false)
   }
 
   function toggleTimer() {
-    if (remainingSeconds === 0) {
-      setRemainingSeconds(focusData.durationMinutes * 60)
+    let nextRemaining = remainingSeconds
+    if (nextRemaining === 0) {
+      nextRemaining = focusData.durationMinutes * 60
+      setRemainingSeconds(nextRemaining)
       notifiedRef.current = false
     }
 
@@ -118,13 +133,23 @@ export default function FocusStudio() {
       Notification.requestPermission().catch(() => undefined)
     }
 
-    setIsRunning(value => !value)
+    if (isRunning) {
+      const pausedAt = getRemainingSeconds(focusData)
+      updateFocusData({ running: false, endsAt: null, remainingSeconds: pausedAt })
+      setRemainingSeconds(pausedAt)
+      setIsRunning(false)
+    } else {
+      const endsAt = Date.now() + nextRemaining * 1000
+      updateFocusData({ running: true, endsAt, remainingSeconds: nextRemaining })
+      setIsRunning(true)
+    }
   }
 
   function resetTimer() {
     setIsRunning(false)
     notifiedRef.current = false
     setRemainingSeconds(focusData.durationMinutes * 60)
+    updateFocusData({ running: false, endsAt: null, remainingSeconds: focusData.durationMinutes * 60 })
   }
 
   return (
