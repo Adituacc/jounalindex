@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 const path = 'journal-index/private-workspace-v1.json';
 export function createHandler(storage = { get, put }) { return async function handler(req, res) {
-  res.setHeader('Cache-Control','no-store');
+  res.setHeader('Cache-Control','no-store, no-transform');
   res.setHeader('X-Content-Type-Options','nosniff');
   const expected = process.env.SYNC_WORKSPACE_ID || '';
   if (!expected || !process.env.BLOB_READ_WRITE_TOKEN) return res.status(503).json({error:'Private sync is not configured yet. Local saving is available.'});
@@ -14,6 +14,7 @@ export function createHandler(storage = { get, put }) { return async function ha
       const result = await storage.get(path,{access:'private',useCache:false,abortSignal:AbortSignal.timeout(15000),ifNoneMatch:req.headers['if-none-match']});
       if (!result) return res.status(404).json({error:'Workspace has not been uploaded yet.'});
       res.setHeader('ETag',result.blob.etag);
+      res.setHeader('X-Workspace-Revision',result.blob.etag.replace(/^W\//,''));
       if (result.statusCode === 304) return res.status(304).end();
       return res.status(200).json(JSON.parse(await new Response(result.stream).text()));
     }
@@ -24,6 +25,7 @@ export function createHandler(storage = { get, put }) { return async function ha
       if (!match && req.headers['if-none-match'] !== '*') return res.status(428).json({error:'A revision is required.'});
       const result = await storage.put(path,JSON.stringify(body),{access:'private',abortSignal:AbortSignal.timeout(15000),addRandomSuffix:false,contentType:'application/json',...(match ? {ifMatch:match,allowOverwrite:true} : {allowOverwrite:false})});
       res.setHeader('ETag',result.etag);
+      res.setHeader('X-Workspace-Revision',result.etag.replace(/^W\//,''));
       return res.status(200).json({ok:true});
     }
     res.setHeader('Allow','GET, PUT'); return res.status(405).end();

@@ -14,7 +14,7 @@ test('private API authenticates, requires a revision and uses conditional privat
   const headers={authorization:`Bearer ${keys.auth}`};res=response();await handler({method:'GET',headers},res);assert.equal(res.code,404);
   const body=await seal(emptyDocument(),keys.encryption,keys.workspace);
   res=response();await handler({method:'PUT',headers,body},res);assert.equal(res.code,428);assert.equal(writes,0);
-  res=response();await handler({method:'PUT',headers:{...headers,'if-none-match':'*'},body},res);assert.equal(res.code,200);assert.equal(res.headers.ETag,'next');
+  res=response();await handler({method:'PUT',headers:{...headers,'if-none-match':'*'},body},res);assert.equal(res.code,200);assert.equal(res.headers.ETag,'next');assert.equal(res.headers['X-Workspace-Revision'],'next');
   res=response();await handler({method:'PUT',headers:{...headers,'if-match':'revision'},body},res);assert.equal(res.code,200);assert.equal(writes,2);
   res=response();await handler({method:'PUT',headers,body:{version:1,iv:'wrong',data:'plaintext'}},res);assert.equal(res.code,400);
   delete process.env.BLOB_READ_WRITE_TOKEN;res=response();await handler({method:'GET',headers},res);assert.equal(res.code,503);

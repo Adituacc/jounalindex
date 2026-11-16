@@ -18,10 +18,10 @@ test('real client pairs, sends edits, receives edits, defers while typing, and r
       if(race) { race=false;tag='raced-revision';return new Response('{}',{status:412}); }
       assert.equal(options.headers['If-Match'],tag);
       remote=await open(JSON.parse(options.body),keys.encryption,keys.workspace);tag=`revision-${++writes+1}`;
-      return new Response('{}',{status:200,headers:{ETag:tag}});
+      return new Response('{}',{status:200,headers:{ETag:`W/"${tag}"`,'X-Workspace-Revision':tag}});
     }
-    if(options.headers['If-None-Match']===tag) return new Response(null,{status:304,headers:{ETag:tag}});
-    return new Response(JSON.stringify(await seal(remote,keys.encryption,keys.workspace)),{status:200,headers:{ETag:tag}});
+    if(options.headers['If-None-Match']===tag) return new Response(null,{status:304,headers:{ETag:`W/"${tag}"`,'X-Workspace-Revision':tag}});
+    return new Response(JSON.stringify(await seal(remote,keys.encryption,keys.workspace)),{status:200,headers:{ETag:`W/"${tag}"`,'X-Workspace-Revision':tag}});
   };
   let client=await import('../src/sync/client.js');client.startSync();
   try {

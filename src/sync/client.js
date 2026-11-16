@@ -10,6 +10,7 @@ export function stopSync() { clearTimeout(timer); clearInterval(polling); cleanu
 let baseline = {}, dirty = false, etag, initialized = false, applying = false;
 let status = { state: code ? 'connecting' : 'local', message: code ? 'Connecting…' : 'Saved on this device', lastSync: null, paired: Boolean(code) };
 const listeners = new Set();
+const responseRevision = response => (response.headers.get('X-Workspace-Revision') || response.headers.get('ETag'))?.replace(/^W\//, '');
 const timedFetch = (url, options) => fetch(url, {...options, signal: AbortSignal.timeout(20000)});
 const setStatus = patch => { status = { ...status, ...patch }; listeners.forEach(fn => fn(status)); };
 export const subscribe = fn => { listeners.add(fn); fn(status); return () => listeners.delete(fn); };
@@ -87,7 +88,7 @@ export async function syncNow() {
     if (response.status === 200) {
       setStatus({state:'syncing',message:'Opening workspace…'});
       incoming = await open(await response.json(),keys.encryption,keys.workspace);
-      remoteTag = response.headers.get('ETag');
+      remoteTag = responseRevision(response);
     } else if (response.status !== 304 && response.status !== 404) {
       const body = await response.json(); throw new Error(body.error || 'Sync unavailable.');
     }
@@ -116,7 +117,7 @@ export async function syncNow() {
       const result = await timedFetch('/api/workspace',{method:'PUT',headers:{...headers,'Content-Type':'application/json',...(etag ? {'If-Match':etag} : {'If-None-Match':'*'})},body:JSON.stringify(envelope)});
       if (result.status === 412) { etag = undefined; schedule(1200); setStatus({state:'pending',message:'Merging changes from your other device…'}); return; }
       if (!result.ok) { const body = await result.json(); throw new Error(body.error || 'Upload failed.'); }
-      etag = result.headers.get('ETag');
+      etag = responseRevision(result);
       await capture();
       dirty = uploadedRecords !== JSON.stringify(documentState.records);
     }
