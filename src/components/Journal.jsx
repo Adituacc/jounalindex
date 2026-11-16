@@ -419,6 +419,15 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
     setNoteId(nid);
   };
 
+  const quickNote = () => {
+    saveNote();
+    const folder = appDataRef.current.folders.find(f => f.id === activeFolder) || appDataRef.current.folders.find(f => f.id === 'my-notes') || appDataRef.current.folders[0];
+    if (!folder) { showToast('Create a folder first.', 'info'); return; }
+    const id = `${folder.id}_${crypto.randomUUID()}`, now = new Date().toISOString();
+    save(data => ({...data,notes:{...data.notes,[id]:{id,folderId:folder.id,date:getDateKey(new Date()),tags:[],content:'',created:now,updated:now}}}));
+    setNoteId(id);
+  };
+
   useEffect(() => {
     if (!linkedTradeId) return;
     const trade = trades.find(item => item.id === linkedTradeId);
@@ -774,7 +783,7 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
           </div>
         )}
 
-        <div className="flex gap-2 lg:hidden"><button className="rounded-lg border border-dark-600 px-3 py-2 text-sm" onClick={() => { setNoteId(null); setFocusMode(false); setNavCollapsed(false); setMidCollapsed(false); }}>Browse notes</button>{noteId && <button className="rounded-lg bg-accent px-3 py-2 text-sm text-white" onClick={() => setFocusMode(v => !v)}>{focusMode ? 'Show navigation' : 'Focus on writing'}</button>}</div>
+        <div className="flex flex-wrap gap-2"><button type="button" aria-label="New note" className="rounded-lg bg-accent px-3 py-2 text-sm text-white" onClick={quickNote}>+ New note</button><button className="rounded-lg border border-dark-600 px-3 py-2 text-sm" onClick={() => { setNoteId(null); setFocusMode(false); setNavCollapsed(false); setMidCollapsed(false); }}>Browse notes</button>{noteId && <button className="rounded-lg bg-accent px-3 py-2 text-sm text-white" onClick={() => setFocusMode(v => !v)}>{focusMode ? 'Show navigation' : 'Focus on writing'}</button>}</div>
         {/* Main notebook */}
         <div className={`journal-notebook ${noteId ? 'j-has-selection' : ''} flex flex-1 flex-col gap-4 overflow-visible lg:flex-row lg:overflow-hidden`}>
           {/* Folder sidebar */}

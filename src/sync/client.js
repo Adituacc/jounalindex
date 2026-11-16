@@ -25,13 +25,21 @@ function db() {
 }
 async function load() {
   const database = await db();
-  try { return await new Promise((resolve,reject) => { const request = database.transaction('workspace').objectStore('workspace').get('document'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); }); }
-  finally { database.close(); }
+  try { return await new Promise((resolve,reject) => {
+    const tx = database.transaction('workspace'), store = tx.objectStore('workspace');
+    const documentRequest=store.get('document'), pairingRequest=store.get('pairing');
+    tx.oncomplete=()=>resolve({document:documentRequest.result,pairing:pairingRequest.result});
+    tx.onerror=()=>reject(tx.error);
+  }); } finally { database.close(); }
 }
 async function persist() {
   const database = await db();
-  try { await new Promise((resolve,reject) => { const tx = database.transaction('workspace','readwrite'); tx.objectStore('workspace').put(documentState,'document'); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); }); }
-  finally { database.close(); }
+  try { await new Promise((resolve,reject) => {
+    const tx = database.transaction('workspace','readwrite'),store=tx.objectStore('workspace');
+    store.put(documentState,'document');
+    if(code)store.put(code,'pairing');else store.delete('pairing');
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+  }); } finally { database.close(); }
 }
 function snapshot() { return Object.fromEntries(DATA_KEYS.map(k => [k,localStorage.getItem(k)]).filter(([,v]) => v !== null)); }
 function editing() { const node = document.activeElement; if (node?.closest('[aria-label="Private device sync"]')) return false; return node?.isContentEditable || ['INPUT','TEXTAREA','SELECT'].includes(node?.tagName); }
@@ -52,13 +60,16 @@ export async function connect(pair) {
   if (![200,404].includes(response.status)) { const body = await response.json(); throw new Error(body.error || 'Unable to connect.'); }
   if (code && code !== pair.trim()) throw new Error('This device is already paired. Export a backup and disconnect before changing workspaces.');
   code = pair.trim(); localStorage.setItem('ji_pairing',code);
+  window.dispatchEvent(new CustomEvent('workspace:pairing-changed',{detail:{code}}));
   etag = undefined;
   setStatus({paired:true,state:'connecting',message:'Pairing workspace…'});
   return syncNow();
 }
 export function disconnect() {
   code = null; localStorage.removeItem('ji_pairing'); clearTimeout(timer);
+  window.dispatchEvent(new CustomEvent('workspace:pairing-changed',{detail:{code:''}}));
   setStatus({paired:false,state:'local',message:'Saved on this device'});
+  return ready.then(persist).catch(() => {});
 }
 export async function syncNow() {
   await ready;
@@ -115,13 +126,23 @@ export async function syncNow() {
   } finally { running = false; }
 }
 export function startSync() {
-  if (initialized) return;
+  if (initialized) return ready;
   initialized = true;
   ready = (async () => {
     try {
-      documentState = (await load()) || emptyDocument();
-      // On a new installation only actual local data becomes a local edit; absent data is not a deletion.
+      const saved=await load();
+      documentState = saved.document || emptyDocument();
+      code = code || saved.pairing || null;
+      if(code && !localStorage.getItem('ji_pairing'))localStorage.setItem('ji_pairing',code);
+      setStatus({paired:Boolean(code),state:code ? 'connecting' : 'local',message:code ? 'Connecting…' : 'Saved on this device'});
       baseline = materialize(documentState.records);
+      // Losing an entire browser mirror is recovery, never an instruction to erase the cloud.
+      if (!Object.keys(snapshot()).length && Object.keys(baseline).length) {
+        applying=true;
+        try {for(const [key,value] of Object.entries(baseline))localStorage.setItem(key,value);}
+        finally{applying=false;}
+        window.dispatchEvent(new Event('workspace:updated'));
+      }
       if (JSON.stringify(baseline) !== JSON.stringify(snapshot())) await capture();
     } catch (error) { setStatus({state:'error',message:`Local sync recovery unavailable: ${error.message}`}); }
   })();
@@ -135,5 +156,6 @@ export function startSync() {
   listen(document,'visibilitychange',() => { window.dispatchEvent(new Event('workspace:flush')); if (!document.hidden) schedule(300); else ready.then(capture).catch(() => {}); });
   polling = setInterval(() => { if (!document.hidden && Date.now()-lastPoll >= 300000) schedule(300); },300000);
   ready.then(() => { if (code) schedule(500); });
+  return ready;
 }
 export function recoveryRecords() { return Object.entries(documentState.records).filter(([key]) => key.startsWith('recovery/')).map(([,r]) => r.value); }

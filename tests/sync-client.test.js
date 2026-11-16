@@ -23,7 +23,7 @@ test('real client pairs, sends edits, receives edits, defers while typing, and r
     if(options.headers['If-None-Match']===tag) return new Response(null,{status:304,headers:{ETag:tag}});
     return new Response(JSON.stringify(await seal(remote,keys.encryption,keys.workspace)),{status:200,headers:{ETag:tag}});
   };
-  const client=await import('../src/sync/client.js');client.startSync();
+  let client=await import('../src/sync/client.js');client.startSync();
   try {
     await client.connect(code);
     assert.equal(client.getStatus().state,'synced',client.getStatus().message);
@@ -38,5 +38,14 @@ test('real client pairs, sends edits, receives edits, defers while typing, and r
     await client.syncNow();assert.equal(client.getStatus().state,'pending');await client.syncNow();
     assert.equal(JSON.parse(materialize(remote.records).notebookData).notes.a.content,'Race-safe');assert.equal(client.getStatus().state,'synced');
     Object.defineProperty(navigator,'onLine',{value:false,configurable:true});await client.syncNow();assert.equal(client.getStatus().state,'offline');
+    client.stopSync();window.localStorage.clear();
+    client=await import('../src/sync/client.js?recovered');await client.startSync();
+    assert.equal(JSON.parse(appStorage.getItem('notebookData')).notes.a.content,'Race-safe');
+    assert.equal(appStorage.getItem('ji_pairing'),code);
+    await client.syncNow();assert.equal(client.getStatus().state,'offline');
+    await client.disconnect();client.stopSync();
+    client=await import('../src/sync/client.js?disconnected');await client.startSync();
+    assert.equal(client.getStatus().paired,false);
+    assert.equal(JSON.parse(appStorage.getItem('notebookData')).notes.a.content,'Race-safe');
   } finally {client.stopSync();dom.window.close();}
 });
