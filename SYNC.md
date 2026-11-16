@@ -1,6 +1,6 @@
 # Private workspace sync
 
-The existing journal and trading data remain in browser storage. Pair the Mac website and iPhone Journal section once under **Settings → Your private workspace**. The same code grants read/write access and decrypts the workspace; protect it like a password. Full backups deliberately exclude this code. Anyone using an unpaired browser continues to have a local workspace.
+The existing journal and trading data remain in browser storage. Large values use lossless compression to fit WebKit’s local-storage limit; full backup exports retain the original readable format. Pair the Mac website and iPhone Journal section once under **Settings → Your private workspace**. The same code grants read/write access and decrypts the workspace; protect it like a password. Full backups deliberately exclude this code. Anyone using an unpaired browser continues to have a local workspace.
 
 A Vercel private Blob store backs `/api/workspace`. Set `BLOB_READ_WRITE_TOKEN` and `SYNC_WORKSPACE_ID` in this project's environment. The latter is the SHA-256/base64url hash of a 256-bit HKDF-derived authorization key. The server rejects unpaired callers and does not receive the master pairing code or encryption key. Never put real journal data, keys, or backup files in this repository or app bundle.
 

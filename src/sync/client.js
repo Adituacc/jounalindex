@@ -34,7 +34,7 @@ async function persist() {
   finally { database.close(); }
 }
 function snapshot() { return Object.fromEntries(DATA_KEYS.map(k => [k,localStorage.getItem(k)]).filter(([,v]) => v !== null)); }
-function editing() { const node = document.activeElement; return node?.isContentEditable || ['INPUT','TEXTAREA','SELECT'].includes(node?.tagName); }
+function editing() { const node = document.activeElement; if (node?.closest('[aria-label="Private device sync"]')) return false; return node?.isContentEditable || ['INPUT','TEXTAREA','SELECT'].includes(node?.tagName); }
 async function capture() {
   const current = snapshot();
   if (JSON.stringify(current) === JSON.stringify(baseline)) return false;

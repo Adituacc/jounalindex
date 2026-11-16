@@ -13,7 +13,7 @@ export default [
         TextEncoder: 'readonly', Response: 'readonly', Uint8Array: 'readonly', btoa: 'readonly', atob: 'readonly', CompressionStream: 'readonly', DecompressionStream: 'readonly', Storage: 'readonly', indexedDB: 'readonly', navigator: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
         alert: 'readonly',
         Blob: 'readonly',
-        Event: 'readonly',
+        Event: 'readonly', CustomEvent: 'readonly',
         FileReader: 'readonly',
         Math: 'readonly',
         Notification: 'readonly',
