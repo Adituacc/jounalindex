@@ -1,3 +1,4 @@
+import { appStorage as localStorage } from '../utils/appStorage.js';
 import { useRef } from 'react';
 import DeviceSync from './DeviceSync';
 import { useTrades } from '../context/TradeContext';

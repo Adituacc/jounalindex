@@ -1,3 +1,4 @@
+import { appStorage as localStorage } from './utils/appStorage.js';
 import { useState, useEffect, useCallback } from 'react';
 import { TradeProvider, useTrades } from './context/TradeContext';
 import { ToastProvider } from './context/ToastContext';

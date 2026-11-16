@@ -1,3 +1,4 @@
+import { appStorage as localStorage } from '../../../utils/appStorage.js';
 import { useEffect, useMemo, useState } from 'react'
 import { getGlobalSearchResults, STORAGE_KEYS } from '../lib/analytics'
 import { writeJson } from '../lib/storage'
@@ -13,7 +14,7 @@ function createQuickTodo(text) {
     tag: '',
   }
 
-  const current = JSON.parse(window.localStorage.getItem(STORAGE_KEYS.todos) || '[]')
+  const current = JSON.parse(localStorage.getItem(STORAGE_KEYS.todos) || '[]')
   writeJson(STORAGE_KEYS.todos, [...current, nextTodo])
 }
 
@@ -28,7 +29,7 @@ function createQuickNote(text) {
     updatedAt: new Date().toISOString(),
   }
 
-  const current = JSON.parse(window.localStorage.getItem(STORAGE_KEYS.notes) || '[]')
+  const current = JSON.parse(localStorage.getItem(STORAGE_KEYS.notes) || '[]')
   writeJson(STORAGE_KEYS.notes, [nextNote, ...current])
 }
 

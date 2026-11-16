@@ -11,7 +11,7 @@ export function createHandler(storage = { get, put }) { return async function ha
   if (actual.length !== expected.length || !timingSafeEqual(Buffer.from(actual),Buffer.from(expected))) return res.status(401).json({error:'This pairing code does not match this private workspace.'});
   try {
     if (req.method === 'GET') {
-      const result = await storage.get(path,{access:'private',useCache:false,ifNoneMatch:req.headers['if-none-match']});
+      const result = await storage.get(path,{access:'private',useCache:false,abortSignal:AbortSignal.timeout(15000),ifNoneMatch:req.headers['if-none-match']});
       if (!result) return res.status(404).json({error:'Workspace has not been uploaded yet.'});
       res.setHeader('ETag',result.blob.etag);
       if (result.statusCode === 304) return res.status(304).end();
@@ -22,7 +22,7 @@ export function createHandler(storage = { get, put }) { return async function ha
       if (body?.version !== 1 || !/^[\w-]{16}$/.test(body.iv || '') || typeof body.data !== 'string' || !/^[\w-]+$/.test(body.data) || body.data.length > 3500000) return res.status(400).json({error:'Invalid encrypted workspace.'});
       const match = req.headers['if-match'];
       if (!match && req.headers['if-none-match'] !== '*') return res.status(428).json({error:'A revision is required.'});
-      const result = await storage.put(path,JSON.stringify(body),{access:'private',addRandomSuffix:false,contentType:'application/json',...(match ? {ifMatch:match,allowOverwrite:true} : {allowOverwrite:false})});
+      const result = await storage.put(path,JSON.stringify(body),{access:'private',abortSignal:AbortSignal.timeout(15000),addRandomSuffix:false,contentType:'application/json',...(match ? {ifMatch:match,allowOverwrite:true} : {allowOverwrite:false})});
       res.setHeader('ETag',result.etag);
       return res.status(200).json({ok:true});
     }

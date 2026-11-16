@@ -1,3 +1,4 @@
+import { appStorage as localStorage } from '../utils/appStorage.js';
 import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { normalizeTrade, createTradeId } from '../utils/formatters';
 

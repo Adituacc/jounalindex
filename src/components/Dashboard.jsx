@@ -1,3 +1,4 @@
+import { appStorage as localStorage } from '../utils/appStorage.js';
 import { useState, useMemo, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, RadialLinearScale, ArcElement, Filler, Tooltip } from 'chart.js';
 import { Line, Bar, Scatter, Radar, Doughnut } from 'react-chartjs-2';

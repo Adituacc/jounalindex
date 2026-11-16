@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom';
 import { build, stop } from 'esbuild';
 test('the journal flushes the final keystroke on navigation and backgrounding, and reopens the selected note',async () => {
   const dom=new JSDOM('<div id="root"></div>',{url:'https://editor.test',pretendToBeVisual:true});
-  for(const key of ['window','document','localStorage','Event']) globalThis[key]=dom.window[key];
+  for(const key of ['window','document','localStorage','Event','CustomEvent']) globalThis[key]=dom.window[key];
   Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
   window.matchMedia=() => ({matches:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;
   localStorage.setItem('notebookData',JSON.stringify({folders:[{id:'daily-journal',name:'Daily Journal',icon:'far fa-calendar-alt'}],notes:{a:{id:'a',date:'2026-11-16',folderId:'daily-journal',content:'<p>A &amp; B</p>',tags:[],pinned:false}}}));

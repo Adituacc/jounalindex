@@ -1,3 +1,4 @@
+import { appStorage as localStorage } from './appStorage.js';
 function reportingCurrencyPrefix() {
   if (typeof localStorage === 'undefined') return '$';
   try {

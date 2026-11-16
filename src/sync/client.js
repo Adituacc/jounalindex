@@ -1,11 +1,12 @@
+import { appStorage as localStorage } from '../utils/appStorage.js';
 import { DATA_KEYS, emptyDocument, flatten, materialize, merge, observe } from './model.js';
 import { keysFor, open, seal } from './crypto.js';
 const device = crypto.randomUUID();
 let documentState = emptyDocument(), ready, code = localStorage.getItem('ji_pairing'), running = false, timer, retry = 0, lastPoll = 0;
-let polling, originalSet, originalRemove;
+let polling;
 const cleanups = [];
 function listen(target, name, fn) { target.addEventListener(name,fn); cleanups.push(() => target.removeEventListener(name,fn)); }
-export function stopSync() { clearTimeout(timer); clearInterval(polling); cleanups.splice(0).forEach(fn => fn()); if (originalSet) Storage.prototype.setItem = originalSet; if (originalRemove) Storage.prototype.removeItem = originalRemove; initialized = false; }
+export function stopSync() { clearTimeout(timer); clearInterval(polling); cleanups.splice(0).forEach(fn => fn()); initialized = false; }
 let baseline = {}, dirty = false, etag, initialized = false, applying = false;
 let status = { state: code ? 'connecting' : 'local', message: code ? 'Connecting…' : 'Saved on this device', lastSync: null, paired: Boolean(code) };
 const listeners = new Set();
@@ -124,10 +125,9 @@ export function startSync() {
       if (JSON.stringify(baseline) !== JSON.stringify(snapshot())) await capture();
     } catch (error) { setStatus({state:'error',message:`Local sync recovery unavailable: ${error.message}`}); }
   })();
-  originalSet = Storage.prototype.setItem; originalRemove = Storage.prototype.removeItem;
-  const changed = key => { if (!applying && DATA_KEYS.includes(key)) { setStatus({state:code ? 'pending' : 'local',message:code ? 'Saved locally · waiting to sync' : 'Saved on this device'}); schedule(); } };
-  Storage.prototype.setItem = function(key,value) { originalSet.call(this,key,value); if (this === localStorage) changed(key); };
-  Storage.prototype.removeItem = function(key) { originalRemove.call(this,key); if (this === localStorage) changed(key); };
+  listen(window,'workspace:local-change', event => {
+    if (!applying && DATA_KEYS.includes(event.detail.key)) { setStatus({state:code ? 'pending' : 'local',message:code ? 'Saved locally · waiting to sync' : 'Saved on this device'}); schedule(); }
+  });
   listen(window,'storage',event => { if (DATA_KEYS.includes(event.key)) { window.dispatchEvent(new Event('workspace:updated')); schedule(); } });
   listen(window,'online',() => schedule(100));
   listen(window,'focus',() => { if (Date.now()-lastPoll > 20000) schedule(500); });
