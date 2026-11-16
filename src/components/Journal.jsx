@@ -161,7 +161,7 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
   const [activeFolder, setActiveFolder] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);
   const [noteId, setNoteId] = useState(() => localStorage.getItem('ji_last_note'));
-  useEffect(() => { if (noteId) localStorage.setItem('ji_last_note', noteId); }, [noteId]);
+  useEffect(() => { if (noteId) localStorage.setItem('ji_last_note', noteId); else localStorage.removeItem('ji_last_note'); }, [noteId]);
   const [calDate, setCalDate] = useState(new Date());
   const [searchQ, setSearchQ] = useState('');
   const [navCollapsed, setNavCollapsed] = useState(() => window.matchMedia('(max-width: 767px)').matches);

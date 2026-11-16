@@ -1,5 +1,6 @@
+import { gzipSync, gunzipSync } from 'fflate';
 const encoder = new TextEncoder();
-export function encode(bytes) { return btoa(Array.from(bytes, b => String.fromCharCode(b)).join('')).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+export function encode(bytes) { const chunks=[];for(let i=0;i<bytes.length;i+=8192)chunks.push(String.fromCharCode(...bytes.subarray(i,i+8192)));return btoa(chunks.join('')).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
 export function decode(value) { return Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0)); }
 export const createPairingCode = () => `JI1.${encode(crypto.getRandomValues(new Uint8Array(32)))}`;
 export async function keysFor(code) {
@@ -13,14 +14,14 @@ export async function keysFor(code) {
 }
 export async function seal(document, key, workspace) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const compressed = await new Response(new Blob([JSON.stringify(document)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  const compressed = gzipSync(encoder.encode(JSON.stringify(document)),{level:1});
   const ciphertext = await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode(workspace)},key,compressed);
   return { version:1, iv:encode(iv), data:encode(new Uint8Array(ciphertext)) };
 }
 export async function open(envelope, key, workspace) {
   if (envelope?.version !== 1) throw new Error('Unsupported workspace format.');
   const plaintext = await crypto.subtle.decrypt({name:'AES-GCM',iv:decode(envelope.iv),additionalData:encoder.encode(workspace)},key,decode(envelope.data));
-  const text = await new Response(new Blob([plaintext]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  const text = new TextDecoder().decode(gunzipSync(new Uint8Array(plaintext)));
   const document = JSON.parse(text);
   if (document?.version !== 1 || !document.records || typeof document.records !== 'object') throw new Error('Invalid workspace data.');
   return document;
