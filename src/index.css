@@ -437,3 +437,20 @@ body {
   content: "Start writing... (# for headings, - for lists, [] for checklists)";
   color: #3f3f46; pointer-events: none; display: block; font-style: italic;
 }
+
+/* Phone writing stays comfortably above the home indicator and keyboard. */
+@media (max-width: 767px) {
+  .j-note-editor { font-size: 16px; padding: 18px; min-height: 45dvh; }
+  .j-toolbar { gap: 3px; padding: 8px; }
+  .j-toolbar-btn { min-width: 34px; min-height: 36px; }
+  .journal-notebook .j-nav-sidebar { max-height: 180px; }
+  .journal-notebook .j-nav-sidebar .j-sidebar-inner { max-height: 180px; }
+  .journal-notebook.j-has-selection .j-mid-sidebar { max-height: 160px; }
+  .journal-notebook.j-has-selection .j-mid-sidebar .j-sidebar-inner { max-height: 160px; }
+  input, select, textarea { font-size: 16px; }
+  main { padding-bottom: env(safe-area-inset-bottom, 20px); }
+}
+@media (max-width: 767px) {
+  .journal-notebook.j-has-selection .j-nav-sidebar.j-collapsed,
+  .journal-notebook.j-has-selection .j-mid-sidebar.j-collapsed { display: none; }
+}

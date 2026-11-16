@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import DeviceSync from './DeviceSync';
 import { useTrades } from '../context/TradeContext';
 import { useToast } from '../context/ToastContext';
 
@@ -47,6 +48,7 @@ export default function Settings() {
       <div className="mx-auto max-w-5xl space-y-6">
         <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Workspace</p><h1 className="mt-1 text-2xl font-bold">Settings & data safety</h1><p className="mt-2 text-sm text-neutral">Set the rules once so every dashboard, sync, and journal view agrees.</p></div>
 
+        <DeviceSync />
         <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
           <section className="rounded-2xl border border-dark-600 bg-dark-800 p-5">
             <h2 className="font-semibold">Trading preferences</h2>

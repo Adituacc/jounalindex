@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { startSync } from './sync/client';
+startSync();
 import './index.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 
@@ -13,3 +15,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App onReady={() => { if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 300); } }} />
   </React.StrictMode>
 );
+
+// Load updated code only after a deliberate reload, so an open editor is never replaced.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}

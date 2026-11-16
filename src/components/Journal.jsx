@@ -63,30 +63,31 @@ function loadJournalData() {
 
 // Keep a separate timer per note so switching notes cannot discard or misapply a pending save.
 function useKeyedDebounce(fn, delay) {
-  const timersRef = useRef(new Map());
-  const latestFnRef = useRef(fn);
-  useEffect(() => { latestFnRef.current = fn; }, [fn]);
-
+  const pending = useRef(new Map());
+  const latest = useRef(fn);
+  latest.current = fn;
+  const flush = useCallback(() => {
+    const entries = [...pending.current.entries()]; pending.current.clear();
+    entries.forEach(([key, value]) => { clearTimeout(value.timer); latest.current(key, ...value.args); });
+  }, []);
   const schedule = useCallback((key, ...args) => {
-    clearTimeout(timersRef.current.get(key));
-    const timer = setTimeout(() => {
-      timersRef.current.delete(key);
-      latestFnRef.current(key, ...args);
-    }, delay);
-    timersRef.current.set(key, timer);
+    clearTimeout(pending.current.get(key)?.timer);
+    const timer = setTimeout(() => { pending.current.delete(key); latest.current(key, ...args); }, delay);
+    pending.current.set(key, {timer,args});
   }, [delay]);
+  const cancel = useCallback(key => { clearTimeout(pending.current.get(key)?.timer); pending.current.delete(key); }, []);
+  useEffect(() => {
+    window.addEventListener('workspace:flush', flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', flush);
+    return () => { flush(); window.removeEventListener('workspace:flush', flush); window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', flush); };
+  }, [flush]);
+  return {schedule,cancel};
+}
 
-  const cancel = useCallback((key) => {
-    clearTimeout(timersRef.current.get(key));
-    timersRef.current.delete(key);
-  }, []);
-
-  useEffect(() => () => {
-    timersRef.current.forEach(timer => clearTimeout(timer));
-    timersRef.current.clear();
-  }, []);
-
-  return { schedule, cancel };
+function plainText(html) {
+  const template = document.createElement('template'); template.innerHTML = html || '';
+  return template.content.textContent.replace(/\s+/g, ' ').trim();
 }
 
 // Color palette for text/highlight pickers
@@ -104,7 +105,7 @@ function formatDateShort(k) { return new Intl.DateTimeFormat('en-US', { month: '
 
 function getPreview(html) {
   if (!html) return '';
-  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const text = plainText(html);
   return text.length > 90 ? text.slice(0, 90) + '…' : text;
 }
 
@@ -158,11 +159,13 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
   const [appData, setAppData] = useState(loadJournalData);
   const [activeFolder, setActiveFolder] = useState('all');
   const [tagFilter, setTagFilter] = useState(null);
-  const [noteId, setNoteId] = useState(null);
+  const [noteId, setNoteId] = useState(() => localStorage.getItem('ji_last_note'));
+  useEffect(() => { if (noteId) localStorage.setItem('ji_last_note', noteId); }, [noteId]);
   const [calDate, setCalDate] = useState(new Date());
   const [searchQ, setSearchQ] = useState('');
-  const [navCollapsed, setNavCollapsed] = useState(false);
-  const [midCollapsed, setMidCollapsed] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  const [midCollapsed, setMidCollapsed] = useState(() => Boolean(localStorage.getItem('ji_last_note')) && window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => { if (noteId && window.matchMedia('(max-width: 767px)').matches) { setNavCollapsed(true); setMidCollapsed(true); } }, [noteId]);
   const [calPopup, setCalPopup] = useState(null);
   const [fontSize, setFontSize] = useState(2);
   const [sortAsc, setSortAsc] = useState(false);
@@ -196,7 +199,7 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
     let n = Object.values(appData.notes);
     if (activeFolder !== 'all') n = n.filter(x => x.folderId === activeFolder);
     if (tagFilter) n = n.filter(x => x.tags?.includes(tagFilter));
-    if (searchQ) n = n.filter(x => x.content.replace(/<[^>]+>/g, '').toLowerCase().includes(searchQ.toLowerCase()));
+    if (searchQ) n = n.filter(x => plainText(x.content).toLowerCase().includes(searchQ.toLowerCase()));
     if (filterNonEmpty) n = n.filter(x => x.content.replace(/<[^>]+>/g, '').trim().length > 0);
     return n.sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
@@ -770,8 +773,9 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
           </div>
         )}
 
+        <div className="flex gap-2 lg:hidden"><button className="rounded-lg border border-dark-600 px-3 py-2 text-sm" onClick={() => { setNoteId(null); setFocusMode(false); setNavCollapsed(false); setMidCollapsed(false); }}>Browse notes</button>{noteId && <button className="rounded-lg bg-accent px-3 py-2 text-sm text-white" onClick={() => setFocusMode(v => !v)}>{focusMode ? 'Show navigation' : 'Focus on writing'}</button>}</div>
         {/* Main notebook */}
-        <div className="journal-notebook flex flex-1 flex-col gap-4 overflow-visible lg:flex-row lg:overflow-hidden">
+        <div className={`journal-notebook ${noteId ? 'j-has-selection' : ''} flex flex-1 flex-col gap-4 overflow-visible lg:flex-row lg:overflow-hidden`}>
           {/* Folder sidebar */}
           <div className={`j-nav-sidebar ${navCollapsed || focusMode ? 'j-collapsed' : ''}`} style={focusMode ? { width: 0, border: 'none', opacity: 0, overflow: 'hidden' } : undefined}>
             {(navCollapsed && !focusMode) && (

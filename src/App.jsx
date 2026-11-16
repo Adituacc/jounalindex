@@ -8,6 +8,7 @@ import TradeLibrary from './components/TradeLibrary';
 import Journal from './components/Journal';
 import SyncCenter from './components/SyncCenter';
 import Settings from './components/Settings';
+import SyncIndicator from './components/SyncIndicator';
 import AddTradeModal from './components/AddTradeModal';
 import HLSyncModal from './components/HLSyncModal';
 import LTSyncModal from './components/LTSyncModal';
@@ -46,7 +47,10 @@ function WorkspaceOnboarding({ onNavigate, onAddTrade }) {
 }
 
 export default function App({ onReady }) {
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(() => { const view = localStorage.getItem('ji_last_view'); return ['dashboard','trades','journal','sync','lifetracker','settings'].includes(view) ? view : 'journal'; });
+  const [revision, setRevision] = useState(0);
+  useEffect(() => { localStorage.setItem('ji_last_view', activeView); }, [activeView]);
+  useEffect(() => { const refresh = () => setRevision(v => v + 1); window.addEventListener('workspace:updated', refresh); return () => window.removeEventListener('workspace:updated', refresh); }, []);
   const [addTradeOpen, setAddTradeOpen] = useState(false);
   const [hlSyncOpen, setHlSyncOpen] = useState(false);
   const [ltSyncOpen, setLtSyncOpen] = useState(false);
@@ -95,7 +99,7 @@ export default function App({ onReady }) {
 
   return (
     <ErrorBoundary>
-      <TradeProvider>
+      <TradeProvider key={revision}>
         <ToastProvider>
           <div className="min-h-screen flex">
             {mobileSidebarOpen && (
@@ -126,6 +130,7 @@ export default function App({ onReady }) {
               <i className="fa-solid fa-bars" />
             </button>
             <main className={`w-full min-w-0 flex-1 min-h-screen transition-[margin] duration-300 ml-0 ${sidebarCollapsed ? 'md:ml-[72px]' : 'md:ml-64'}`}>
+              <SyncIndicator onOpen={() => setActiveView('settings')} />
               <WorkspaceOnboarding onNavigate={setActiveView} onAddTrade={() => setAddTradeOpen(true)} />
               <div key={activeView} className="animate-fade-in">
                 {activeView === 'dashboard' && <Dashboard onEditTrade={setEditingTrade} onJournalTrade={trade => { setLinkedTradeId(trade.id); setActiveView('journal'); }} onJournalDate={date => { setLinkedJournalDate(date); setActiveView('journal'); }} />}
