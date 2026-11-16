@@ -81,10 +81,11 @@ export async function syncNow() {
     await capture();
     const keys = await keysFor(code);
     const headers = {Authorization:`Bearer ${keys.auth}`};
-    setStatus({state:'syncing',message:'Syncing…'});
+    setStatus({state:'syncing',message:'Checking for changes…'});
     const response = await timedFetch('/api/workspace',{headers:{...headers,...(etag ? {'If-None-Match':etag} : {})},cache:'no-store'});
     let incoming, remoteTag;
     if (response.status === 200) {
+      setStatus({state:'syncing',message:'Opening workspace…'});
       incoming = await open(await response.json(),keys.encryption,keys.workspace);
       remoteTag = response.headers.get('ETag');
     } else if (response.status !== 304 && response.status !== 404) {
@@ -109,7 +110,9 @@ export async function syncNow() {
     }
     if (dirty || response.status === 404) {
       const uploadedRecords = JSON.stringify(documentState.records);
+      setStatus({state:'syncing',message:'Preparing changes…'});
       const envelope = await seal(documentState,keys.encryption,keys.workspace);
+      setStatus({state:'syncing',message:'Sending changes…'});
       const result = await timedFetch('/api/workspace',{method:'PUT',headers:{...headers,'Content-Type':'application/json',...(etag ? {'If-Match':etag} : {'If-None-Match':'*'})},body:JSON.stringify(envelope)});
       if (result.status === 412) { etag = undefined; schedule(1200); setStatus({state:'pending',message:'Merging changes from your other device…'}); return; }
       if (!result.ok) { const body = await result.json(); throw new Error(body.error || 'Upload failed.'); }
