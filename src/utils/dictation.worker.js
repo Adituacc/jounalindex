@@ -1,17 +1,19 @@
-import { env, pipeline } from '@huggingface/transformers';
-
-env.allowLocalModels = false;
-env.backends.onnx.wasm.numThreads = 1;
-env.backends.onnx.wasm.proxy = false;
+const engine = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 const model = 'onnx-community/whisper-tiny';
 const revision = 'ff4177021cc41f7db950912b73ea4fdf7d01d8e7';
 let speech;
+async function loadSpeech() {
+  const { env, pipeline } = await import(/* @vite-ignore */ engine);
+  env.allowLocalModels = false;
+  env.backends.onnx.wasm.numThreads = 1;
+  env.backends.onnx.wasm.proxy = false;
+  return pipeline('automatic-speech-recognition', model, { revision, device: 'wasm', dtype: 'q8' });
+}
 globalThis.onmessage = async ({ data }) => {
   try {
     if (!speech) {
       globalThis.postMessage({ id: data.id, stage: 'setup' });
-      speech = pipeline('automatic-speech-recognition', model, { revision, device: 'wasm', dtype: 'q8' })
-        .catch(error => { speech = undefined; throw error; });
+      speech = loadSpeech().catch(error => { speech = undefined; throw error; });
     }
     const transcribe = await speech;
     globalThis.postMessage({ id: data.id, stage: 'transcribe' });
