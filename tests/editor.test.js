@@ -25,19 +25,17 @@ test('the journal flushes the final keystroke on navigation and backgrounding, a
     editor=document.querySelector('[contenteditable]');assert.equal(editor.innerHTML,'<p>The final character!</p>');
     await act(async () => {editor.innerHTML='<p>Saved before sleep.</p>';editor.dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new Event('workspace:flush'));});
     assert.equal(JSON.parse(localStorage.notebookData).notes.a.content,'<p>Saved before sleep.</p>');
-    let speech;
-    window.SpeechRecognition = class {
-      constructor() { speech = this; }
-      start() {}
-      stop() { this.onend(); }
-      abort() { this.onend(); }
-    };
-    const click = label => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === label).click();
-    await act(async () => {root.unmount();root=mount(document.getElementById('root'));});
-    await act(async () => click('Dictate'));
-    await act(async () => speech.onresult({ results: [Object.assign([{ transcript: 'Keep <this> exact.' }], { isFinal: true })] }));
-    assert.equal(JSON.parse(localStorage.notebookData).notes.a.content,'<p>Saved before sleep.</p>');
-    await act(async () => click('Stop dictation'));
-    assert.equal(JSON.parse(localStorage.notebookData).notes.a.content,'<p>Saved before sleep.</p><p>Keep &lt;this&gt; exact.</p>');
+    const backup = JSON.parse(localStorage.notebookData);
+    const clip = { id:'3e6cec5d-9323-4ebe-a2ab-449a1e8464cd', type:'audio/mp4', seconds:3 };
+    backup.notes.a.voiceClips = [clip];
+    await act(async () => {root.unmount();localStorage.notebookData=JSON.stringify(backup);root=mount(document.getElementById('root'));});
+    editor=document.querySelector('.j-note-editor');
+    assert.equal(editor.querySelector('[data-journal-voice]')?.dataset.journalVoice,clip.id);
+    assert.ok(editor.textContent.includes('Open audio'));
+    await act(async () => {editor.append(document.createTextNode(' New text after the clip.'));editor.dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new Event('workspace:flush'));});
+    const saved = JSON.parse(localStorage.notebookData).notes.a;
+    assert.equal(saved.voiceInline,true);
+    assert.equal(saved.content,`<p>Saved before sleep.</p><span data-journal-voice="${clip.id}" contenteditable="false"></span> New text after the clip.`);
+    assert.deepEqual(saved.voiceClips,[clip]);
   } finally {if(root)await act(async()=>root.unmount());dom.window.close();delete globalThis.IS_REACT_ACT_ENVIRONMENT;stop();for (const handle of process._getActiveHandles()) { if (handle.constructor.name === 'MessagePort') handle.unref(); }}
 });

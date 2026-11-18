@@ -5,6 +5,15 @@ import { useTrades } from '../context/TradeContext';
 import { normalizeJournalBackup } from '../utils/journalData';
 import { formatMoneyFull } from '../utils/formatters';
 import JournalVoice from './JournalVoice';
+import { validClip, validClipId } from '../sync/voice.js';
+
+const voiceMarkerSelector = '[data-journal-voice]';
+const createVoiceMarker = id => {
+  const marker = document.createElement('span');
+  marker.dataset.journalVoice = id;
+  marker.setAttribute('contenteditable', 'false');
+  return marker;
+};
 
 function sanitizeUrl(value, allowImages = false) {
   try {
@@ -18,10 +27,14 @@ function sanitizeUrl(value, allowImages = false) {
   }
 }
 
-function sanitizeHtml(html) {
+function sanitizeHtml(html, keepVoice = true) {
   if (!html || typeof document === 'undefined') return html || '';
   const template = document.createElement('template');
   template.innerHTML = String(html);
+  template.content.querySelectorAll(voiceMarkerSelector).forEach(node => {
+    if (keepVoice && validClipId(node.dataset.journalVoice)) node.replaceWith(createVoiceMarker(node.dataset.journalVoice));
+    else node.remove();
+  });
   template.content.querySelectorAll('script,style,iframe,object,embed,form').forEach(node => node.remove());
   template.content.querySelectorAll('*').forEach(node => {
     Array.from(node.attributes).forEach(attribute => {
@@ -245,6 +258,11 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
     if (!editorRef.current || loadedNoteIdRef.current === noteId) return;
 
     editorRef.current.innerHTML = currentNote.content;
+    const known = new Set((Array.isArray(currentNote.voiceClips) ? currentNote.voiceClips : []).filter(validClip).map(clip => clip.id));
+    editorRef.current.querySelectorAll(voiceMarkerSelector).forEach(marker => {
+      if (!known.delete(marker.dataset.journalVoice)) marker.remove();
+    });
+    if (!currentNote.voiceInline) for (const id of known) editorRef.current.append(createVoiceMarker(id));
     loadedNoteIdRef.current = noteId;
     savedSelectionRef.current = null;
     updateWordCount();
@@ -261,7 +279,7 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
         ...data,
         notes: {
           ...data.notes,
-          [targetNoteId]: { ...note, content, updated: new Date().toISOString() },
+          [targetNoteId]: { ...note, content, ...(note.voiceClips?.length ? { voiceInline: true } : {}), updated: new Date().toISOString() },
         },
       };
     });
@@ -293,19 +311,36 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
     if (!editor || loadedNoteIdRef.current !== noteId) return;
     const paragraph = document.createElement('p');
     paragraph.textContent = text;
-    if (!editor.textContent.trim() && !editor.querySelector('img,input,hr,video,table')) editor.replaceChildren(paragraph);
+    if (!editor.textContent.trim() && !editor.querySelector('img,input,hr,video,table,[data-journal-voice]')) editor.replaceChildren(paragraph);
     else editor.append(paragraph);
     saveNote();
     updateWordCount();
   };
 
-  const updateVoiceClips = update => save(data => {
-    const note = data.notes[noteId];
-    if (!note) return data;
-    return { ...data, notes: { ...data.notes, [noteId]: {
-      ...note, voiceClips: update(Array.isArray(note.voiceClips) ? note.voiceClips : []), updated: new Date().toISOString(),
-    } } };
-  });
+  const updateVoiceClips = (clip, remove = false) => {
+    const editor = editorRef.current;
+    const note = appDataRef.current.notes[noteId];
+    if (!note || !editor || loadedNoteIdRef.current !== noteId) return;
+    cancelNoteSave(noteId);
+    const previous = Array.isArray(note.voiceClips) ? note.voiceClips : [];
+    if (remove) {
+      editor.querySelectorAll(voiceMarkerSelector).forEach(marker => { if (marker.dataset.journalVoice === clip.id) marker.remove(); });
+    } else {
+      const marker = createVoiceMarker(clip.id);
+      const range = savedSelectionRef.current?.cloneRange();
+      if (selectionInsideEditor(range) && !range.endContainer.parentElement?.closest(voiceMarkerSelector)) {
+        range.collapse(false);
+        range.insertNode(marker);
+        range.setStartAfter(marker);
+        range.collapse(true);
+        savedSelectionRef.current = range;
+      } else editor.append(marker);
+    }
+    save(data => ({ ...data, notes: { ...data.notes, [noteId]: {
+      ...data.notes[noteId], voiceInline: true, voiceClips: remove ? previous.filter(item => item.id !== clip.id) : [...previous, clip],
+      content: sanitizeHtml(editor.innerHTML), updated: new Date().toISOString(),
+    } } }));
+  };
 
   // Handle Enter key inside checklists to auto-insert new checklist items
   // Handle Tab for indent/outdent in lists
@@ -1098,15 +1133,14 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
                     }} title="Duplicate note"><i className="far fa-copy text-xs" /></button>
                     <button className="j-toolbar-btn j-btn-danger" onClick={deleteNote} title="Delete note"><i className="fas fa-trash text-xs" /></button>
                   </div>
-                  <JournalVoice key={noteId} clips={Array.isArray(currentNote.voiceClips) ? currentNote.voiceClips : []}
-                    onInsert={insertDictation} onAttach={clip => updateVoiceClips(clips => [...clips, clip])}
-                    onRemove={id => updateVoiceClips(clips => clips.filter(clip => clip.id !== id))} />
+                  <JournalVoice key={noteId} editorRef={editorRef} clips={Array.isArray(currentNote.voiceClips) ? currentNote.voiceClips : []}
+                    onInsert={insertDictation} onAttach={updateVoiceClips} onRemove={id => updateVoiceClips({ id }, true)} />
                   <div ref={editorRef} className="j-note-editor" contentEditable="true" role="textbox" aria-label="Journal entry editor" aria-multiline="true" onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onMouseUp={saveSelection} onKeyUp={saveSelection} onBlur={saveNote} spellCheck="true"
                     onPaste={(event) => {
                       event.preventDefault();
                       const html = event.clipboardData.getData('text/html');
                       const text = event.clipboardData.getData('text/plain');
-                      document.execCommand('insertHTML', false, html ? sanitizeHtml(html) : text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>'));
+                      document.execCommand('insertHTML', false, html ? sanitizeHtml(html, false) : text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>'));
                       debouncedSaveNote();
                     }}
                     onClick={(e) => {

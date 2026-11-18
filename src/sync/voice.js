@@ -3,7 +3,8 @@ import { decode, encode, keysFor } from './crypto.js';
 export const maxVoiceBytes = 1500000;
 const idPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const audioPattern = /^audio\/(mp4|webm|ogg|aac|mpeg)(?:;[\w=., -]+)?$/i;
-export const validClip = clip => clip && idPattern.test(clip.id) && typeof clip.type === 'string' && audioPattern.test(clip.type);
+export const validClipId = id => typeof id === 'string' && idPattern.test(id);
+export const validClip = clip => clip && validClipId(clip.id) && typeof clip.type === 'string' && audioPattern.test(clip.type);
 const binding = (workspace, clip) => new TextEncoder().encode(JSON.stringify(['voice-v1', workspace, clip.id, clip.type]));
 
 export async function sealVoice(blob, keys, clip) {

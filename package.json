@@ -12,6 +12,7 @@
     "check": "npm run lint && npm run test && npm run build"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@vercel/blob": "^2.9.0",
     "chart.js": "^4.4.7",
     "fflate": "^0.8.3",

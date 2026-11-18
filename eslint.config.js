@@ -28,6 +28,8 @@ export default [
         prompt: 'readonly',
         setTimeout: 'readonly',
         window: 'readonly',
+        Worker: 'readonly',
+        Float32Array: 'readonly',
       },
     },
     plugins: { react },
