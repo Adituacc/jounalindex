@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { useTrades } from '../context/TradeContext';
 import { normalizeJournalBackup } from '../utils/journalData';
 import { formatMoneyFull } from '../utils/formatters';
+import JournalVoice from './JournalVoice';
 
 function sanitizeUrl(value, allowImages = false) {
   try {
@@ -201,7 +202,7 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
     if (activeFolder !== 'all') n = n.filter(x => x.folderId === activeFolder);
     if (tagFilter) n = n.filter(x => x.tags?.includes(tagFilter));
     if (searchQ) n = n.filter(x => plainText(x.content).toLowerCase().includes(searchQ.toLowerCase()));
-    if (filterNonEmpty) n = n.filter(x => x.content.replace(/<[^>]+>/g, '').trim().length > 0);
+    if (filterNonEmpty) n = n.filter(x => x.content.replace(/<[^>]+>/g, '').trim().length > 0 || x.voiceClips?.length > 0);
     return n.sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
@@ -286,6 +287,25 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
     debouncedSaveNote();
     updateWordCount();
   }, [debouncedSaveNote, updateWordCount]);
+
+  const insertDictation = text => {
+    const editor = editorRef.current;
+    if (!editor || loadedNoteIdRef.current !== noteId) return;
+    const paragraph = document.createElement('p');
+    paragraph.textContent = text;
+    if (!editor.textContent.trim() && !editor.querySelector('img,input,hr,video,table')) editor.replaceChildren(paragraph);
+    else editor.append(paragraph);
+    saveNote();
+    updateWordCount();
+  };
+
+  const updateVoiceClips = update => save(data => {
+    const note = data.notes[noteId];
+    if (!note) return data;
+    return { ...data, notes: { ...data.notes, [noteId]: {
+      ...note, voiceClips: update(Array.isArray(note.voiceClips) ? note.voiceClips : []), updated: new Date().toISOString(),
+    } } };
+  });
 
   // Handle Enter key inside checklists to auto-insert new checklist items
   // Handle Tab for indent/outdent in lists
@@ -1078,6 +1098,9 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
                     }} title="Duplicate note"><i className="far fa-copy text-xs" /></button>
                     <button className="j-toolbar-btn j-btn-danger" onClick={deleteNote} title="Delete note"><i className="fas fa-trash text-xs" /></button>
                   </div>
+                  <JournalVoice key={noteId} clips={Array.isArray(currentNote.voiceClips) ? currentNote.voiceClips : []}
+                    onInsert={insertDictation} onAttach={clip => updateVoiceClips(clips => [...clips, clip])}
+                    onRemove={id => updateVoiceClips(clips => clips.filter(clip => clip.id !== id))} />
                   <div ref={editorRef} className="j-note-editor" contentEditable="true" role="textbox" aria-label="Journal entry editor" aria-multiline="true" onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onMouseUp={saveSelection} onKeyUp={saveSelection} onBlur={saveNote} spellCheck="true"
                     onPaste={(event) => {
                       event.preventDefault();

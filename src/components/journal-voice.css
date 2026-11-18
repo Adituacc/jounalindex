@@ -1,0 +1,8 @@
+.j-voice { padding: 10px 16px; border-bottom: 1px solid #292c38; font-size: .82rem; }
+.j-voice-actions, .j-voice-clip { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.j-voice button, .j-voice a { padding: 6px 10px; min-height: 36px; border: 1px solid #464c63; border-radius: 7px; color: inherit; }
+.j-voice button:hover { background: #6474ae25; }
+.j-voice button:disabled { opacity: .55; cursor: default; }
+.j-voice-status, .j-voice-transcript { margin: 6px 0; }
+.j-voice-clip { margin-top: 8px; }
+.j-voice-clip audio { max-width: 100%; width: 260px; }

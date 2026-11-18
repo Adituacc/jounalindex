@@ -8,6 +8,8 @@ Clients derive separate authentication and AES-256-GCM encryption keys with HKDF
 
 Changes save locally first, upload after a short pause, and download when the app returns to the foreground, comes online, or the user presses **Sync now**. An open, idle page also checks every five minutes to keep usage reasonable on Hobby. Remote updates wait until the user leaves an input/editor. The browser app shell is cached for offline use after a successful first load. A newly installed device needs an initial internet connection to pair and download data.
 
+Journal's voice controls let you dictate an editable paragraph, record audio, or do both. Each recording is limited to 45 seconds and 1.5 MB. In the iPhone app, transcription uses Apple's on-device speech recognition; on the website, dictation uses your browser's speech service where available. You can use keyboard dictation if the browser or language doesn't support it. Voice recordings are only uploaded when you choose **Save audio to entry** while paired and online. Each clip is encrypted before upload to private Blob storage; only a small reference travels with the note. Open a saved clip online and use **Download** for a standalone audio backup. Journal JSON backups include the attachment references, not the audio files.
+
 ## Validation
 
 `npm run check` runs lint, data/analytics tests, encryption/merge tests, an authenticated API test, a simulated two-device transport test (including stale writes and edits in progress), and the journal's final-keystroke persistence regression test, followed by a production build.

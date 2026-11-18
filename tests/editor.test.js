@@ -11,7 +11,7 @@ test('the journal flushes the final keystroke on navigation and backgrounding, a
   window.matchMedia=() => ({matches:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;
   localStorage.setItem('notebookData',JSON.stringify({folders:[{id:'daily-journal',name:'Daily Journal',icon:'far fa-calendar-alt'}],notes:{a:{id:'a',date:'2026-11-16',folderId:'daily-journal',content:'<p>A &amp; B</p>',tags:[],pinned:false}}}));
   localStorage.setItem('ji_last_note','a');
-  const bundle=await build({entryPoints:['tests/editor-fixture.jsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',define:{'process.env.NODE_ENV':'"development"'}});
+  const bundle=await build({entryPoints:['tests/editor-fixture.jsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',loader:{'.css':'empty'},define:{'process.env.NODE_ENV':'"development"'}});
   const originalChannel=globalThis.MessageChannel; globalThis.MessageChannel=undefined;
   const {act,mount}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
   globalThis.MessageChannel=originalChannel;
@@ -25,5 +25,19 @@ test('the journal flushes the final keystroke on navigation and backgrounding, a
     editor=document.querySelector('[contenteditable]');assert.equal(editor.innerHTML,'<p>The final character!</p>');
     await act(async () => {editor.innerHTML='<p>Saved before sleep.</p>';editor.dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new Event('workspace:flush'));});
     assert.equal(JSON.parse(localStorage.notebookData).notes.a.content,'<p>Saved before sleep.</p>');
+    let speech;
+    window.SpeechRecognition = class {
+      constructor() { speech = this; }
+      start() {}
+      stop() { this.onend(); }
+      abort() { this.onend(); }
+    };
+    const click = label => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === label).click();
+    await act(async () => {root.unmount();root=mount(document.getElementById('root'));});
+    await act(async () => click('Dictate'));
+    await act(async () => speech.onresult({ results: [Object.assign([{ transcript: 'Keep <this> exact.' }], { isFinal: true })] }));
+    assert.equal(JSON.parse(localStorage.notebookData).notes.a.content,'<p>Saved before sleep.</p>');
+    await act(async () => click('Stop dictation'));
+    assert.equal(JSON.parse(localStorage.notebookData).notes.a.content,'<p>Saved before sleep.</p><p>Keep &lt;this&gt; exact.</p>');
   } finally {if(root)await act(async()=>root.unmount());dom.window.close();delete globalThis.IS_REACT_ACT_ENVIRONMENT;stop();for (const handle of process._getActiveHandles()) { if (handle.constructor.name === 'MessagePort') handle.unref(); }}
 });

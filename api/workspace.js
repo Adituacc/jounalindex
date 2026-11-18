@@ -1,6 +1,24 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 const path = 'journal-index/private-workspace-v1.json';
+const clipId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+const encrypted = (body, limit) => body?.version === 1 && /^[\w-]{16}$/.test(body.iv || '') && typeof body.data === 'string' && body.data.length <= limit && /^[\w-]+$/.test(body.data);
+async function handleClip(req, res, storage, id) {
+  if (!clipId.test(id)) return res.status(400).json({ error: 'Invalid voice clip.' });
+  const key = `journal-index/voice-v1/${id}.json`;
+  const options = { access: 'private', abortSignal: AbortSignal.timeout(15000) };
+  if (req.method === 'GET') {
+    const result = await storage.get(key, { ...options, useCache: false });
+    if (!result) return res.status(404).json({ error: 'Voice clip is unavailable.' });
+    return res.status(200).json(JSON.parse(await new Response(result.stream).text()));
+  }
+  if (req.method === 'PUT') {
+    if (!encrypted(req.body, 2000050)) return res.status(400).json({ error: 'Invalid encrypted voice clip.' });
+    await storage.put(key, JSON.stringify(req.body), { ...options, addRandomSuffix: false, allowOverwrite: false, contentType: 'application/json' });
+    return res.status(200).json({ ok: true });
+  }
+  res.setHeader('Allow', 'GET, PUT'); return res.status(405).end();
+}
 export function createHandler(storage = { get, put }) { return async function handler(req, res) {
   res.setHeader('Cache-Control','no-store, no-transform');
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -10,6 +28,8 @@ export function createHandler(storage = { get, put }) { return async function ha
   const actual = auth ? createHash('sha256').update(auth).digest('base64url') : '';
   if (actual.length !== expected.length || !timingSafeEqual(Buffer.from(actual),Buffer.from(expected))) return res.status(401).json({error:'This pairing code does not match this private workspace.'});
   try {
+    const clip = new URL(req.url || '/', 'https://journal.invalid').searchParams.get('voice');
+    if (clip !== null) return await handleClip(req, res, storage, clip);
     if (req.method === 'GET') {
       const result = await storage.get(path,{access:'private',useCache:false,abortSignal:AbortSignal.timeout(15000),ifNoneMatch:req.headers['if-none-match']});
       if (!result) return res.status(404).json({error:'Workspace has not been uploaded yet.'});
@@ -20,7 +40,7 @@ export function createHandler(storage = { get, put }) { return async function ha
     }
     if (req.method === 'PUT') {
       const body = req.body;
-      if (body?.version !== 1 || !/^[\w-]{16}$/.test(body.iv || '') || typeof body.data !== 'string' || !/^[\w-]+$/.test(body.data) || body.data.length > 3500000) return res.status(400).json({error:'Invalid encrypted workspace.'});
+      if (!encrypted(body, 3500000)) return res.status(400).json({error:'Invalid encrypted workspace.'});
       const match = req.headers['if-match'];
       if (!match && req.headers['if-none-match'] !== '*') return res.status(428).json({error:'A revision is required.'});
       const result = await storage.put(path,JSON.stringify(body),{access:'private',abortSignal:AbortSignal.timeout(15000),addRandomSuffix:false,contentType:'application/json',...(match ? {ifMatch:match,allowOverwrite:true} : {allowOverwrite:false})});
