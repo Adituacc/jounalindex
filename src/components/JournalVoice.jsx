@@ -26,7 +26,7 @@ function stopSession(session, discard = false) {
   if (discard) session.abort.abort();
 }
 
-export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onRemove }) {
+export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onRemove, onWrite }) {
   const session = useRef(null);
   const transfers = useRef(new AbortController());
   const urls = useRef(new Set());
@@ -39,6 +39,7 @@ export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onR
   const [busy, setBusy] = useState(false);
   const [player, setPlayer] = useState(null);
   const [loadingClip, setLoadingClip] = useState(null);
+  const [lastSavedClip, setLastSavedClip] = useState(null);
   const [targets, setTargets] = useState([]);
   const fileInput = useRef(null);
   useEffect(() => {
@@ -169,7 +170,7 @@ export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onR
     setBusy(true); setStatus('Encrypting and saving your recording…');
     try {
       const clip = await saveVoice(audio.file, pairingCode(), audio.seconds, transfers.current.signal);
-      if (active.current) { onAttach(clip); setAudio(null); setStatus('Voice clip attached. It will appear on your paired devices after sync.'); }
+      if (active.current) { onAttach(clip); setAudio(null); setLastSavedClip(clip.id); setStatus('Audio saved in this note. You can keep writing.'); }
     } catch (error) {
       if (active.current) setStatus(error.message || 'The clip couldn’t be saved. Try again.');
     } finally { if (active.current) setBusy(false); }
@@ -206,10 +207,17 @@ export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onR
     <input hidden type="file" ref={fileInput} accept="audio/*,.m4a,.mp3,.wav,.webm" onChange={transcribeFile} />
     {!recordingOK() && <p className="j-voice-status">This browser can’t open the microphone. Transcribe an audio file, use keyboard dictation, or open Journal in your regular browser.</p>}
     {status && <p className="j-voice-status" role="status">{status}</p>}
+    {phase === 'finishing' && <div className="j-voice-actions">
+      <button type="button" className="j-voice-write" onClick={() => onWrite()}>Keep writing</button>
+    </div>}
     {audio && preview && <div className="j-voice-clip"><audio src={preview} controls preload="metadata" aria-label="Preview your recording" /></div>}
     {!phase && isDraft && <div className="j-voice-actions">
       {audio && <button type="button" onClick={attach} disabled={busy}>{busy ? 'Saving…' : 'Save audio to entry'}</button>}
+      <button type="button" className="j-voice-write" onClick={() => onWrite()}>Keep writing</button>
       <button type="button" disabled={busy} onClick={() => { setAudio(null); setStatus('Recording discarded.'); }}>Discard audio</button>
+    </div>}
+    {!phase && !isDraft && lastSavedClip && <div className="j-voice-actions">
+      <button type="button" className="j-voice-write" onClick={() => onWrite(lastSavedClip)}>Keep writing</button>
     </div>}
   </section>
     {targets.map((target, index) => {
@@ -220,9 +228,11 @@ export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onR
       {player?.id === clip.id ? <audio key={player.url} src={player.url} controls preload="metadata" onError={() => setStatus('This browser couldn’t play the recording. You can still download it.')} /> :
         <button type="button" disabled={loadingClip !== null} onClick={() => play(clip)}>{loadingClip === clip.id ? 'Opening…' : 'Open audio'}</button>}
       {player?.id === clip.id && <a href={player.url} download={`journal-voice.${clip.type.includes('mp4') ? 'm4a' : clip.type.split('/')[1].split(';')[0]}`}>Download</a>}
+      <button type="button" className="j-voice-write" onClick={() => onWrite(clip.id)}>Write below</button>
       <button type="button" onClick={() => {
         if (!window.confirm('Remove this audio attachment from the entry?')) return;
         if (player?.id === clip.id) { URL.revokeObjectURL(player.url); urls.current.delete(player.url); setPlayer(null); }
+        if (lastSavedClip === clip.id) setLastSavedClip(null);
         onRemove(clip.id);
       }}>Remove</button>
       </span>, target, clip.id + ':' + index);

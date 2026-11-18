@@ -32,10 +32,17 @@ test('the journal flushes the final keystroke on navigation and backgrounding, a
     editor=document.querySelector('.j-note-editor');
     assert.equal(editor.querySelector('[data-journal-voice]')?.dataset.journalVoice,clip.id);
     assert.ok(editor.textContent.includes('Open audio'));
-    await act(async () => {editor.append(document.createTextNode(' New text after the clip.'));editor.dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new Event('workspace:flush'));});
+    const write = [...editor.querySelectorAll('button')].find(button => button.textContent === 'Write below');
+    assert.ok(write);
+    await act(async () => write.click());
+    const writingLine = editor.querySelector('[data-journal-voice]').nextElementSibling;
+    assert.equal(writingLine.tagName,'P');
+    assert.equal(window.getSelection().anchorNode,writingLine);
+    assert.equal(document.activeElement,editor);
+    await act(async () => {writingLine.textContent='New text after the clip.';editor.dispatchEvent(new Event('input',{bubbles:true}));window.dispatchEvent(new Event('workspace:flush'));});
     const saved = JSON.parse(localStorage.notebookData).notes.a;
     assert.equal(saved.voiceInline,true);
-    assert.equal(saved.content,`<p>Saved before sleep.</p><span data-journal-voice="${clip.id}" contenteditable="false"></span> New text after the clip.`);
+    assert.equal(saved.content,`<p>Saved before sleep.</p><span data-journal-voice="${clip.id}" contenteditable="false"></span><p>New text after the clip.</p>`);
     assert.deepEqual(saved.voiceClips,[clip]);
   } finally {if(root)await act(async()=>root.unmount());dom.window.close();delete globalThis.IS_REACT_ACT_ENVIRONMENT;stop();for (const handle of process._getActiveHandles()) { if (handle.constructor.name === 'MessagePort') handle.unref(); }}
 });

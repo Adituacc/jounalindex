@@ -14,6 +14,26 @@ const createVoiceMarker = id => {
   marker.setAttribute('contenteditable', 'false');
   return marker;
 };
+const makeWritingLine = () => {
+  const paragraph = document.createElement('p');
+  paragraph.append(document.createElement('br'));
+  return paragraph;
+};
+function editorBlock(editor, node) {
+  if (!node || node === editor || !editor.contains(node)) return null;
+  while (node.parentNode !== editor) node = node.parentNode;
+  return node;
+}
+function writingLineAfter(editor, marker) {
+  const block = editorBlock(editor, marker);
+  if (!block) return null;
+  const next = block.nextSibling;
+  if (next?.nodeType === 3 && next.textContent.trim()) return next;
+  if (next?.matches?.('p,div') && !next.matches('[contenteditable="false"],[data-journal-voice]') && !next.querySelector(voiceMarkerSelector)) return next;
+  const line = makeWritingLine();
+  block.after(line);
+  return line;
+}
 
 function sanitizeUrl(value, allowImages = false) {
   try {
@@ -263,6 +283,10 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
       if (!known.delete(marker.dataset.journalVoice)) marker.remove();
     });
     if (!currentNote.voiceInline) for (const id of known) editorRef.current.append(createVoiceMarker(id));
+    const editor = editorRef.current;
+    if (editor.firstChild?.matches?.(voiceMarkerSelector)) editor.prepend(makeWritingLine());
+    const last = editor.lastChild;
+    if (last?.matches?.(voiceMarkerSelector) || last?.querySelector?.(voiceMarkerSelector)) editor.append(makeWritingLine());
     loadedNoteIdRef.current = noteId;
     savedSelectionRef.current = null;
     updateWordCount();
@@ -327,19 +351,40 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
       editor.querySelectorAll(voiceMarkerSelector).forEach(marker => { if (marker.dataset.journalVoice === clip.id) marker.remove(); });
     } else {
       const marker = createVoiceMarker(clip.id);
-      const range = savedSelectionRef.current?.cloneRange();
-      if (selectionInsideEditor(range) && !range.endContainer.parentElement?.closest(voiceMarkerSelector)) {
-        range.collapse(false);
-        range.insertNode(marker);
-        range.setStartAfter(marker);
-        range.collapse(true);
-        savedSelectionRef.current = range;
-      } else editor.append(marker);
+      const range = savedSelectionRef.current;
+      const at = range?.endContainer;
+      const block = editorBlock(editor, at) || (at === editor && range.endOffset > 0 ? editor.childNodes[range.endOffset - 1] : null);
+      if (block && !block.matches?.(voiceMarkerSelector) && !block.querySelector?.(voiceMarkerSelector)) block.after(marker);
+      else editor.append(marker);
+      if (editor.firstChild === marker) editor.prepend(makeWritingLine());
+      writingLineAfter(editor, marker);
     }
     save(data => ({ ...data, notes: { ...data.notes, [noteId]: {
       ...data.notes[noteId], voiceInline: true, voiceClips: remove ? previous.filter(item => item.id !== clip.id) : [...previous, clip],
       content: sanitizeHtml(editor.innerHTML), updated: new Date().toISOString(),
     } } }));
+  };
+
+  const keepWriting = clipId => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const marker = clipId && [...editor.querySelectorAll(voiceMarkerSelector)].find(node => node.dataset.journalVoice === clipId);
+    const line = marker && writingLineAfter(editor, marker);
+    const previous = savedSelectionRef.current;
+    const previousNode = previous?.endContainer;
+    const previousElement = previousNode?.nodeType === 1 ? previousNode : previousNode?.parentElement;
+    const usePrevious = !line && selectionInsideEditor(previous) && !previousElement?.closest('[contenteditable="false"]');
+    const range = usePrevious ? previous.cloneRange() : document.createRange();
+    if (line) range.setStart(line, 0);
+    else if (!usePrevious) range.selectNodeContents(editor);
+    range.collapse(!usePrevious && Boolean(line));
+    editor.focus({ preventScroll: true });
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    savedSelectionRef.current = range.cloneRange();
+    (line?.nodeType === 1 ? line : line?.parentElement || editor).scrollIntoView?.({ block: 'nearest' });
+    if (line) saveNote();
   };
 
   // Handle Enter key inside checklists to auto-insert new checklist items
@@ -1134,7 +1179,7 @@ export default function Journal({ linkedTradeId = '', linkedDate = '', onLinkedT
                     <button className="j-toolbar-btn j-btn-danger" onClick={deleteNote} title="Delete note"><i className="fas fa-trash text-xs" /></button>
                   </div>
                   <JournalVoice key={noteId} editorRef={editorRef} clips={Array.isArray(currentNote.voiceClips) ? currentNote.voiceClips : []}
-                    onInsert={insertDictation} onAttach={updateVoiceClips} onRemove={id => updateVoiceClips({ id }, true)} />
+                    onInsert={insertDictation} onAttach={updateVoiceClips} onRemove={id => updateVoiceClips({ id }, true)} onWrite={keepWriting} />
                   <div ref={editorRef} className="j-note-editor" contentEditable="true" role="textbox" aria-label="Journal entry editor" aria-multiline="true" onInput={handleEditorInput} onKeyDown={handleEditorKeyDown} onMouseUp={saveSelection} onKeyUp={saveSelection} onBlur={saveNote} spellCheck="true"
                     onPaste={(event) => {
                       event.preventDefault();
