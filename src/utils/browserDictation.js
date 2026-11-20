@@ -1,5 +1,6 @@
+import { maxRecordingSeconds } from '../sync/voice.js';
 const rate = 16000;
-const maxSamples = rate * 46;
+const maxSamples = rate * (maxRecordingSeconds + 2);
 let worker;
 
 export async function browserDictation(file, { signal, onStage } = {}) {
@@ -9,7 +10,7 @@ export async function browserDictation(file, { signal, onStage } = {}) {
   const context = new Offline(1, 1, rate);
   const decoded = await context.decodeAudioData(await file.arrayBuffer());
   signal?.throwIfAborted();
-  if (decoded.length > maxSamples) throw new Error('Choose an audio clip of 45 seconds or less.');
+  if (decoded.length > maxSamples) throw new Error('Choose an audio clip of five minutes or less.');
   const samples = new Float32Array(decoded.length);
   for (let i = 0; i < decoded.numberOfChannels; i++) {
     const channel = decoded.getChannelData(i);
@@ -46,7 +47,7 @@ export async function browserDictation(file, { signal, onStage } = {}) {
       close();
       resolve(data.text);
     };
-    const timeout = setTimeout(fail, 180000);
+    const timeout = setTimeout(fail, 600000);
     signal?.addEventListener('abort', cancel, { once: true });
     activeWorker.addEventListener('message', receive);
     activeWorker.addEventListener('error', fail);

@@ -3,7 +3,7 @@ import process from 'node:process';
 import assert from 'node:assert/strict';
 import { createHandler } from '../api/workspace.js';
 import { createPairingCode, keysFor } from '../src/sync/crypto.js';
-import { loadVoice, openVoice, saveVoice, sealVoice } from '../src/sync/voice.js';
+import { loadVoice, maxRecordingSeconds, openVoice, prepareRecording, saveVoice, sealVoice } from '../src/sync/voice.js';
 
 test('a voice clip can sync to another device but cannot be opened or swapped without the paired keys', async t => {
   const pair = createPairingCode();
@@ -22,7 +22,8 @@ test('a voice clip can sync to another device but cannot be opened or swapped wi
     async put(path, body, options) {
       assert.equal(options.access, 'private');
       assert.equal(options.allowOverwrite, false);
-      assert.match(path, /^journal-index\/voice-v1\/[\w-]+\.json$/);
+      assert.match(path, /^journal-index\/(?:voice-v1\/[\w-]+|media-v1\/[\w-]+\/[0-9]+)\.json$/);
+      if (storage.has(path)) throw new Error('Already exists');
       storage.set(path, body);
     },
   });
@@ -44,9 +45,28 @@ test('a voice clip can sync to another device but cannot be opened or swapped wi
   assert.equal(storage.size, 1);
   const downloaded = await loadVoice(JSON.parse(JSON.stringify(clip)), pair);
   assert.deepEqual(new Uint8Array(await downloaded.arrayBuffer()), bytes);
-  const unpaired = await fetch(`/api/workspace?voice=${clip.id}`, { method:'GET' });
+  const unpaired = await fetch(`/api/workspace?media=${clip.id}&part=0`, { method:'GET' });
   assert.equal(unpaired.status, 401);
   const envelope = await sealVoice(audio, keys, clip);
   await assert.rejects(openVoice(envelope, keys, { ...clip, id: crypto.randomUUID() }));
   await assert.rejects(openVoice(envelope, await keysFor(createPairingCode()), clip));
+
+  const legacy = { id: crypto.randomUUID(), type: audio.type };
+  storage.set(`journal-index/voice-v1/${legacy.id}.json`, JSON.stringify(await sealVoice(audio, keys, legacy)));
+  assert.deepEqual(new Uint8Array(await (await loadVoice(legacy, pair)).arrayBuffer()), bytes);
+
+  const large = new Uint8Array(5600016);
+  large[0] = 17; large[2800000] = 59; large[5600015] = 91;
+  const video = new Blob([large], { type: 'video/mp4; codecs="avc1.42001f,mp4a.40.2"' });
+  const draft = prepareRecording(video, maxRecordingSeconds);
+  assert.equal(draft.parts, 3);
+  const inserted = await saveVoice(video, pair, maxRecordingSeconds, undefined, { clip: draft });
+  assert.equal(inserted.seconds, 300);
+  await saveVoice(video, pair, maxRecordingSeconds, undefined, { clip: draft });
+  const result = await loadVoice(inserted, pair);
+  assert.equal(result.type, video.type);
+  assert.deepEqual(new Uint8Array(await result.arrayBuffer()), large);
+  const base = `journal-index/media-v1/${inserted.id}`;
+  storage.set(base + '/1.json', storage.get(base + '/0.json'));
+  await assert.rejects(loadVoice(inserted, pair));
 });

@@ -3,9 +3,9 @@ import { get, put, BlobPreconditionFailedError } from '@vercel/blob';
 const path = 'journal-index/private-workspace-v1.json';
 const clipId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const encrypted = (body, limit) => body?.version === 1 && /^[\w-]{16}$/.test(body.iv || '') && typeof body.data === 'string' && body.data.length <= limit && /^[\w-]+$/.test(body.data);
-async function handleClip(req, res, storage, id) {
-  if (!clipId.test(id)) return res.status(400).json({ error: 'Invalid voice clip.' });
-  const key = `journal-index/voice-v1/${id}.json`;
+async function handleClip(req, res, storage, id, part = null) {
+  if (!clipId.test(id) || (part !== null && (!/^(0|[1-9][0-9]?)$/.test(part) || Number(part) >= 29))) return res.status(400).json({ error: 'Invalid recording.' });
+  const key = part === null ? `journal-index/voice-v1/${id}.json` : `journal-index/media-v1/${id}/${part}.json`;
   const options = { access: 'private', abortSignal: AbortSignal.timeout(15000) };
   if (req.method === 'GET') {
     const result = await storage.get(key, { ...options, useCache: false });
@@ -13,7 +13,7 @@ async function handleClip(req, res, storage, id) {
     return res.status(200).json(JSON.parse(await new Response(result.stream).text()));
   }
   if (req.method === 'PUT') {
-    if (!encrypted(req.body, 2000050)) return res.status(400).json({ error: 'Invalid encrypted voice clip.' });
+    if (!encrypted(req.body, part === null ? 2000050 : 3733370)) return res.status(400).json({ error: 'Invalid encrypted recording.' });
     await storage.put(key, JSON.stringify(req.body), { ...options, addRandomSuffix: false, allowOverwrite: false, contentType: 'application/json' });
     return res.status(200).json({ ok: true });
   }
@@ -28,7 +28,10 @@ export function createHandler(storage = { get, put }) { return async function ha
   const actual = auth ? createHash('sha256').update(auth).digest('base64url') : '';
   if (actual.length !== expected.length || !timingSafeEqual(Buffer.from(actual),Buffer.from(expected))) return res.status(401).json({error:'This pairing code does not match this private workspace.'});
   try {
-    const clip = new URL(req.url || '/', 'https://journal.invalid').searchParams.get('voice');
+    const query = new URL(req.url || '/', 'https://journal.invalid').searchParams;
+    const media = query.get('media');
+    if (media !== null) return await handleClip(req, res, storage, media, query.get('part') ?? '');
+    const clip = query.get('voice');
     if (clip !== null) return await handleClip(req, res, storage, clip);
     if (req.method === 'GET') {
       const result = await storage.get(path,{access:'private',useCache:false,abortSignal:AbortSignal.timeout(15000),ifNoneMatch:req.headers['if-none-match']});
