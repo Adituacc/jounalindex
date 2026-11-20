@@ -65,7 +65,14 @@ export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onR
     active.current = true;
     transfers.current = new AbortController();
     const finish = () => {
-      if (session.current?.finish) session.current.finish();
+      const capture = session.current;
+      if (capture?.finish) capture.finish();
+      else if (capture?.starting) {
+        stopSession(capture, true);
+        session.current = null;
+        setPhase('');
+        setStatus('Recording cancelled.');
+      }
       document.querySelectorAll('.j-voice audio, .j-inline-voice audio, .j-inline-voice video, .j-voice video[controls]').forEach(element => element.pause());
     };
     const onHidden = () => { if (document.hidden) finish(); };
@@ -132,7 +139,7 @@ export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onR
     if (session.current || busy) return;
     const keepAudio = value !== 'text';
     const video = value === 'video';
-    const capture = { parts: [], abort: new AbortController() };
+    const capture = { parts: [], abort: new AbortController(), starting: true };
     session.current = capture;
     setMode(value); setPhase('starting'); setElapsed(0); setStatus(video ? 'Waiting for camera and microphone…' : 'Waiting for microphone…');
     try {
@@ -152,6 +159,7 @@ export default function JournalVoice({ clips, editorRef, onInsert, onAttach, onR
         recorder.onerror = () => { resolve(null); capture.finish?.(); };
       });
       recorder.start(1000);
+      capture.starting = false;
       if (video) setCamera(stream);
       const started = window.performance.now();
       capture.finish = async () => {
